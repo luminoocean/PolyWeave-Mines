@@ -1,73 +1,158 @@
-// docs/app.js — minimal playground logic (no bundler)
-async function loadPresets() {
-  const res = await fetch('./shape-presets.json', {cache:'no-store'});
-  if (!res.ok) throw new Error('Could not load presets');
-  return await res.json();
-}
+// docs/app.js — simple 2D Minesweeper UI for Pages (no bundler)
+(async function(){
+  // tiny DOM references
+  const root = document.createElement('div');
+  root.style.maxWidth = '760px';
+  root.style.margin = '12px auto';
+  document.body.insertBefore(root, document.querySelector('main') || document.body.firstChild);
 
-function render2D(canvas, cells) {
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle = '#021825'; ctx.fillRect(0,0,canvas.width,canvas.height);
-  if (!cells || cells.length === 0) return;
-  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-  cells.forEach(([x,y])=>{ minX=Math.min(minX,x); minY=Math.min(minY,y); maxX=Math.max(maxX,x); maxY=Math.max(maxY,y); });
-  const w = maxX - minX + 1, h = maxY - minY + 1;
-  const scale = Math.min((canvas.width-40)/w, (canvas.height-40)/h, 32);
-  const ox = (canvas.width - w*scale)/2, oy = (canvas.height - h*scale)/2;
-  ctx.fillStyle = '#9be7ff';
-  cells.forEach(([x,y])=>{
-    const cx = ox + (x - minX) * scale, cy = oy + (y - minY) * scale;
-    ctx.fillRect(cx+1, cy+1, Math.max(1, scale-2), Math.max(1, scale-2));
-  });
-}
+  const controls = document.createElement('div');
+  controls.innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <label>Rows <input id="msRows" type="number" value="9" style="width:60px"></label>
+      <label>Cols <input id="msCols" type="number" value="9" style="width:60px"></label>
+      <label>Mines <input id="msMines" type="number" value="10" style="width:60px"></label>
+      <button id="newGame">New Game</button>
+      <div id="msStatus" style="margin-left:12px;color:#9bb4c9"></div>
+    </div>
+  `;
+  root.appendChild(controls);
 
-function expandImplicit(preset) {
-  if (preset.type === 'implicit') {
-    const dims = preset.dims;
-    const cells = [];
-    const R = preset.rule.radius ?? 1;
-    const limits = Array(dims).fill(0).map(()=>({min:-R, max:R}));
-    function recur(coord,i){
-      if (i===dims){
-        const manhattan = coord.reduce((s,v)=>s+Math.abs(v),0);
-        if (preset.rule.type === 'manhattan' && manhattan <= R) cells.push(coord.slice());
-        if (preset.rule.type === 'hyperplane' && coord[preset.rule.axis||(dims-1)] === (preset.rule.value||0)) cells.push(coord.slice());
-        if (preset.rule.type === 'hexagon' && dims===2) {
-          // axial coords for small hexagon radius R (approx): include if |x|+|y|+|x+y| <= 2R
-          const x=coord[0], y=coord[1];
-          if (Math.abs(x)+Math.abs(y)+Math.abs(x+y) <= 2*R) cells.push(coord.slice());
-        }
-        return;
-      }
-      for (let v=limits[i].min; v<=limits[i].max; v++){ coord[i]=v; recur(coord,i+1); }
+  const boardWrap = document.createElement('div');
+  root.appendChild(boardWrap);
+
+  // import grid module via relative path using ES module loader trick: inline functions to avoid module paths in Pages
+  // copy the minimal grid functions inline here to avoid require/browser issues
+  // (we'll inline a slim subset adapted from src/grid)
+  function idx(rows, cols, r, c){ return r*cols + c; }
+  function inBounds(rows, cols, r, c){ return r>=0 && r<rows && c>=0 && c<cols; }
+
+  function createGrid(rows, cols){ return { rows, cols, cells: Array(rows*cols).fill(0).map(()=>({mine:false,revealed:false,flagged:false,count:0})) }; }
+  function placeMines(grid, mineCount){
+    const { rows, cols, cells } = grid;
+    const total = rows*cols;
+    const perm = Array.from({length: total}, (_,i)=>i);
+    for (let i = total-1; i>0; i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [perm[i], perm[j]] = [perm[j], perm[i]];
     }
-    recur(Array(dims).fill(0),0);
-    return cells;
+    for (let k=0;k<mineCount;k++) cells[perm[k]].mine = true;
+    // counts
+    for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){
+      const i = idx(rows,cols,r,c);
+      if (cells[i].mine){ cells[i].count = -1; continue; }
+      let cnt=0;
+      for (let dr=-1;dr<=1;dr++) for (let dc=-1;dc<=1;dc++){
+        if (dr===0 && dc===0) continue;
+        const rr=r+dr, cc=c+dc;
+        if (!inBounds(rows,cols,rr,cc)) continue;
+        if (cells[idx(rows,cols,rr,cc)].mine) cnt++;
+      }
+      cells[i].count = cnt;
+    }
   }
-  if (preset.type === 'generator' && preset.params.type === 'hypercube') {
-    const size = preset.params.size || 2; const dims = preset.dims;
-    const cells = [];
-    const recur = (coord,i)=>{ if (i===dims){ cells.push(coord.slice()); return; } for (let v=0; v<size; v++){ coord[i]=v; recur(coord,i+1); } };
-    recur(Array(dims).fill(0),0); return cells;
+  function revealCell(grid, r, c){
+    const {rows, cols, cells} = grid;
+    const i = idx(rows,cols,r,c);
+    const cell = cells[i];
+    if (!cell || cell.revealed || cell.flagged) return {changed:[], exploded:false};
+    if (cell.mine){ cell.revealed = true; return {changed:[[r,c]], exploded:true}; }
+    const changed=[];
+    const stack=[[r,c]];
+    while(stack.length){
+      const [rr,cc]=stack.pop();
+      const ii = idx(rows,cols,rr,cc);
+      const ce = cells[ii];
+      if (ce.revealed || ce.flagged) continue;
+      ce.revealed = true; changed.push([rr,cc]);
+      if (ce.count === 0){
+        for (let dr=-1;dr<=1;dr++) for (let dc=-1;dc<=1;dc++){
+          if (dr===0 && dc===0) continue;
+          const nr=rr+dr, nc=cc+dc;
+          if (!inBounds(rows,cols,nr,nc)) continue;
+          if (!cells[idx(rows,cols,nr,nc)].revealed) stack.push([nr,nc]);
+        }
+      }
+    }
+    return {changed, exploded:false};
   }
-  return preset.cells || [];
-}
+  function toggleFlag(grid,r,c){ const i = idx(grid.rows,grid.cols,r,c); const cell = grid.cells[i]; if (!cell || cell.revealed) return; cell.flagged = !cell.flagged; }
 
-async function init() {
-  const presets = await loadPresets();
-  const select = document.getElementById('presetSelect');
-  presets.forEach(p=>{ const o = document.createElement('option'); o.value=p.id; o.textContent=`${p.id} (${p.dims}D)`; select.appendChild(o); });
-  const canvas = document.getElementById('canvas2d');
-  document.getElementById('renderBtn').addEventListener('click', ()=>{
-    const chosen = presets.find(p=>p.id === select.value);
-    if (!chosen) return;
-    const cells = expandImplicit(chosen).map(c=>c.slice(0,2)); // show first two axes
-    render2D(canvas, cells);
-    document.getElementById('meshMsg').textContent = `Preview: ${chosen.id}`;
+  // game state
+  let gameGrid = null;
+  let running = false;
+
+  function renderBoard() {
+    boardWrap.innerHTML = '';
+    if (!gameGrid) return;
+    const table = document.createElement('table');
+    table.style.borderCollapse = 'collapse';
+    const { rows, cols, cells } = gameGrid;
+    for (let r=0;r<rows;r++){
+      const tr = document.createElement('tr');
+      for (let c=0;c<cols;c++){
+        const td = document.createElement('td');
+        td.style.width = td.style.height = '28px';
+        td.style.textAlign = 'center';
+        td.style.padding = '0';
+        td.style.border = '1px solid rgba(155,231,255,0.06)';
+        td.style.background = '#04182b';
+        td.style.cursor = 'pointer';
+        const cell = cells[idx(rows,cols,r,c)];
+        if (cell.revealed){
+          td.style.background = '#022';
+          td.style.color = '#9be7ff';
+          td.textContent = cell.mine ? '💣' : (cell.count > 0 ? cell.count : '');
+        } else if (cell.flagged){
+          td.textContent = '🚩';
+        } else {
+          td.textContent = '';
+        }
+        td.addEventListener('click', (e)=> {
+          if (!running) return;
+          const res = revealCell(gameGrid, r, c);
+          if (res.exploded) {
+            running = false;
+            document.getElementById('msStatus').textContent = 'BOOM — you hit a mine';
+            // reveal all mines
+            gameGrid.cells.forEach((cl, i)=> { if (cl.mine) cl.revealed = true; });
+          } else {
+            if (checkWin(gameGrid)) { running = false; document.getElementById('msStatus').textContent = 'You win!'; }
+            else document.getElementById('msStatus').textContent = 'Playing...';
+          }
+          renderBoard();
+        });
+        td.addEventListener('contextmenu', (e)=> {
+          e.preventDefault();
+          if (!running) return;
+          toggleFlag(gameGrid, r, c);
+          if (checkWin(gameGrid)) { running = false; document.getElementById('msStatus').textContent = 'You win!'; }
+          renderBoard();
+        });
+        tr.appendChild(td);
+      }
+      table.appendChild(tr);
+    }
+    boardWrap.appendChild(table);
+  }
+
+  function checkWin(grid){
+    return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed));
+  }
+
+  document.getElementById('newGame').addEventListener('click', ()=> {
+    const rows = Math.max(3, Number(document.getElementById('msRows').value || 9));
+    const cols = Math.max(3, Number(document.getElementById('msCols').value || 9));
+    let mines = Number(document.getElementById('msMines').value || 10);
+    mines = Math.min(mines, rows*cols-1);
+    gameGrid = createGrid(rows, cols);
+    placeMines(gameGrid, mines);
+    running = true;
+    document.getElementById('msStatus').textContent = 'Playing...';
+    renderBoard();
   });
-  // initial render
-  if (presets.length) { select.value = presets[0].id; document.getElementById('renderBtn').click(); }
-}
 
-init().catch(e=>{ console.error(e); document.getElementById('meshMsg').textContent = 'Error loading presets'; });
+  // start a default game
+  document.getElementById('newGame').click();
+
+})();
