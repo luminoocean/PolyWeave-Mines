@@ -1,101 +1,35 @@
-// src/grid/index.js
-// Minimal 2D minesweeper API (row-major)
-function createGrid(rows, cols, mines = 0) {
-  const size = rows * cols;
-  const cells = Array(size).fill(null).map(() => ({
-    mine: false,
-    revealed: false,
-    flagged: false,
-    count: 0
-  }));
-  return { rows, cols, cells };
-}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PolyWeave Mines — LumiOcean</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="./style.css" />
+  <style>
+    /* small page-level defaults so the inlined app looks good */
+    body { background: #00121a; color: #dff6ff; font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; padding: 24px; }
+    main { max-width: 980px; margin: 0 auto; }
+    header h1 { margin: 0 0 6px; }
+    header p { color: #9bb4c9; margin: 0 0 16px; }
+    .muted { color: #9bb4c9; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header style="text-align:center;padding:18px 8px 6px;">
+      <h1>PolyWeave Mines</h1>
+      <p class="muted">LumiOcean — N‑dimensional Minesweeper experiment (MVP: 2D playable first)</p>
+    </header>
 
-function idx(rows, cols, r, c) {
-  return r * cols + c;
-}
+    <!-- App placeholder. docs/app.js will create the Minesweeper UI inside #appRoot -->
+    <section id="appRoot" aria-live="polite" style="margin-top:12px"></section>
 
-function inBounds(rows, cols, r, c) {
-  return r >= 0 && r < rows && c >= 0 && c < cols;
-}
+    <footer style="margin-top:18px;color:#9bb4c9;font-size:13px;text-align:center">
+      This page hosts a simple Minesweeper playground. Use the controls above to start a new game.
+    </footer>
+  </main>
 
-function placeMines(grid, minePositions) {
-  // minePositions: array of [r,c] or a number (count) to place randomly
-  const { rows, cols, cells } = grid;
-  if (typeof minePositions === 'number') {
-    // random placement
-    const n = minePositions;
-    const total = rows * cols;
-    const perm = Array.from({length: total}, (_,i) => i);
-    for (let i = total-1; i > 0 && n < total; i--) {
-      const j = Math.floor(Math.random() * (i+1));
-      [perm[i], perm[j]] = [perm[j], perm[i]];
-    }
-    for (let k = 0; k < n; k++) cells[perm[k]].mine = true;
-  } else {
-    for (const [r,c] of minePositions) {
-      if (!inBounds(rows, cols, r, c)) continue;
-      cells[idx(rows,cols,r,c)].mine = true;
-    }
-  }
-  // compute neighbor counts
-  for (let r=0;r<rows;r++){
-    for (let c=0;c<cols;c++){
-      const i = idx(rows,cols,r,c);
-      if (cells[i].mine) { cells[i].count = -1; continue; }
-      let cnt = 0;
-      for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++){
-        if (dr===0 && dc===0) continue;
-        const rr = r+dr, cc = c+dc;
-        if (!inBounds(rows, cols, rr, cc)) continue;
-        if (cells[idx(rows,cols,rr,cc)].mine) cnt++;
-      }
-      cells[i].count = cnt;
-    }
-  }
-  return grid;
-}
-
-function revealCell(grid, r, c) {
-  const { rows, cols, cells } = grid;
-  const i = idx(rows, cols, r, c);
-  const cell = cells[i];
-  if (!cell || cell.revealed || cell.flagged) return { changed: [], exploded: false };
-  if (cell.mine) { cell.revealed = true; return { changed: [ [r,c] ], exploded: true }; }
-  // flood fill if count === 0
-  const changed = [];
-  const stack = [[r,c]];
-  while (stack.length) {
-    const [rr, cc] = stack.pop();
-    const ii = idx(rows,cols,rr,cc);
-    const ccObj = cells[ii];
-    if (ccObj.revealed || ccObj.flagged) continue;
-    ccObj.revealed = true; changed.push([rr,cc]);
-    if (ccObj.count === 0) {
-      for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++){
-        if (dr===0 && dc===0) continue;
-        const nr=rr+dr, nc=cc+dc;
-        if (!inBounds(rows, cols, nr, nc)) continue;
-        const nidx = idx(rows,cols,nr,nc);
-        if (!cells[nidx].revealed && !cells[nidx].flagged) stack.push([nr,nc]);
-      }
-    }
-  }
-  return { changed, exploded: false };
-}
-
-function toggleFlag(grid, r, c) {
-  const { rows, cols, cells } = grid;
-  const i = idx(rows, cols, r, c);
-  const cell = cells[i];
-  if (!cell || cell.revealed) return null;
-  cell.flagged = !cell.flagged;
-  return cell.flagged;
-}
-
-function checkWin(grid) {
-  const { cells } = grid;
-  return cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed));
-}
-
-module.exports = { createGrid, placeMines, revealCell, toggleFlag, checkWin, idx, inBounds };
+  <!-- load the simplified Minesweeper app (docs/app.js) -->
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
