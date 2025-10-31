@@ -1,4 +1,23 @@
 // docs/app.js — simple 2D Minesweeper UI for Pages (no bundler)
+const SHAPES = {
+  "square-8": { label: "Square 8 (standard)", offsets: [
+    [-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]
+  ]},
+  "von-neumann": { label: "Von Neumann (4)", offsets: [
+    [-1,0],[1,0],[0,-1],[0,1]
+  ]},
+  "plus-extended": { label: "Plus (radius 2)", offsets: [
+    [-2,0],[-1,0],[1,0],[2,0],[0,-2],[0,-1],[0,1],[0,2]
+  ]},
+  "hex-like": { label: "Hex (approx)", offsets: [
+    [-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0]
+  ]},
+  "knight": { label: "Knight moves", offsets: [
+    [-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]
+  ]},
+  "custom": { label: "Custom (edit)", offsets: [] }
+};
+
 (async function(){
   // tiny DOM references
   const root = document.createElement('div');
