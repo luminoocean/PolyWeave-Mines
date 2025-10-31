@@ -1,101 +1,101 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>PolyWeave Mines — LumiOcean</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="stylesheet" href="./style.css" />
-</head>
-<body>
-  <main style="font-family:system-ui,Segoe UI,Roboto,Arial;max-width:980px;margin:48px auto;color:#dff6ff;">
-    <header style="text-align:center;padding:24px 12px">
-      <h1 style="margin:0 0 6px;">PolyWeave Mines</h1>
-      <p style="color:#9bb4c9;margin:0 0 8px;">LumiOcean — N‑dimensional Minesweeper experiment (2D/3D/4D tilings)</p>
+// src/grid/index.js
+// Minimal 2D minesweeper API (row-major)
+function createGrid(rows, cols, mines = 0) {
+  const size = rows * cols;
+  const cells = Array(size).fill(null).map(() => ({
+    mine: false,
+    revealed: false,
+    flagged: false,
+    count: 0
+  }));
+  return { rows, cols, cells };
+}
 
-      <p>
-        <button id="openScript" style="background:transparent;border:0;color:#9be7ff;cursor:pointer;text-decoration:underline;padding:0;margin:0">Playground script</button>
-        &nbsp;•&nbsp;
-        <button id="openPresets" style="background:transparent;border:0;color:#9be7ff;cursor:pointer;text-decoration:underline;padding:0;margin:0">Shape presets</button>
-      </p>
-    </header>
+function idx(rows, cols, r, c) {
+  return r * cols + c;
+}
 
-    <section id="controls" style="display:grid;gap:12px;padding:12px">
-      <div style="display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap">
-        <label style="display:flex;flex-direction:column;align-items:flex-start;color:#9bb4c9">
-          Preset
-          <select id="presetSelect" style="min-width:220px"></select>
-        </label>
+function inBounds(rows, cols, r, c) {
+  return r >= 0 && r < rows && c >= 0 && c < cols;
+}
 
-        <label style="display:flex;flex-direction:column;align-items:flex-start;color:#9bb4c9">
-          Slice index
-          <input id="sliceInput" type="number" value="0" style="width:80px" />
-        </label>
-
-        <button id="renderBtn">Render slice</button>
-        <div id="meshMsg" style="align-self:center;color:#9bb4c9;font-size:13px">Preview ready</div>
-      </div>
-    </section>
-
-    <section id="preview" style="padding:12px">
-      <canvas id="canvas2d" width="720" height="360" style="display:block;margin:0 auto;border-radius:8px"></canvas>
-      <section id="info" style="margin-top:12px">
-        <p class="muted" style="margin:0">Use the dropdown to pick a shape. Click Render slice to preview the 2D projection (first two axes). Then click Open 3D to view a voxelized slice in 3D.</p>
-      </section>
-    </section>
-
-    <!-- 3D viewer container -->
-    <section id="viewer3d" style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:18px;">
-      <div style="display:flex;gap:8px;align-items:center;">
-        <label style="color:#9bb4c9">Show 3D slice</label>
-        <button id="show3dBtn" style="padding:8px 10px;border-radius:8px;border:0;background:linear-gradient(90deg,#0ea5b3,#7ce7ff);cursor:pointer">Open 3D</button>
-        <label style="color:#9bb4c9;margin-left:12px">Slice index
-          <input id="slice3dInput" type="number" value="0" style="width:64px;margin-left:8px;padding:6px;border-radius:6px;background:transparent;color:inherit;border:1px solid rgba(155,231,255,0.08)" />
-        </label>
-      </div>
-
-      <div id="threeRoot" style="width:720px;height:420px;border-radius:8px;overflow:hidden;background:#021023;display:none"></div>
-      <div id="threeMsg" style="color:#9bb4c9;font-size:13px"></div>
-    </section>
-
-    <footer style="padding:18px;text-align:center;color:#9bb4c9;font-size:13px">
-      This page proves GitHub Pages works. Replace with the app later.
-    </footer>
-  </main>
-
-  <!-- scripts -->
-  <script>
-    // header buttons open raw files in a new tab (no navigation away from app)
-    document.getElementById('openScript').addEventListener('click', () => window.open('./app.js', '_blank'));
-    document.getElementById('openPresets').addEventListener('click', () => window.open('./shape-presets.json', '_blank'));
-
-    // keep slice inputs synchronized for convenience
-    const sliceInput = document.getElementById('sliceInput');
-    const slice3dInput = document.getElementById('slice3dInput');
-    sliceInput.addEventListener('input', () => { slice3dInput.value = sliceInput.value; });
-    slice3dInput.addEventListener('input', () => { sliceInput.value = slice3dInput.value; });
-
-    // auto-trigger render before opening 3D (safer UX)
-    function autoRenderIfAvailable() {
-      const renderBtn = document.getElementById('renderBtn');
-      if (renderBtn) renderBtn.click();
+function placeMines(grid, minePositions) {
+  // minePositions: array of [r,c] or a number (count) to place randomly
+  const { rows, cols, cells } = grid;
+  if (typeof minePositions === 'number') {
+    // random placement
+    const n = minePositions;
+    const total = rows * cols;
+    const perm = Array.from({length: total}, (_,i) => i);
+    for (let i = total-1; i > 0 && n < total; i--) {
+      const j = Math.floor(Math.random() * (i+1));
+      [perm[i], perm[j]] = [perm[j], perm[i]];
     }
-    document.getElementById('show3dBtn').addEventListener('click', () => {
-      // ensure 2D preview is current before opening 3D
-      autoRenderIfAvailable();
-      // small delay to let render complete (should be instantaneous); then show viewer
-      setTimeout(() => {
-        const root = document.getElementById('threeRoot');
-        root.style.display = 'block';
-        // if docs/3dviewer.js is a module it will attach its own handlers; if not, we still show the panel
-      }, 150);
-    });
-  </script>
+    for (let k = 0; k < n; k++) cells[perm[k]].mine = true;
+  } else {
+    for (const [r,c] of minePositions) {
+      if (!inBounds(rows, cols, r, c)) continue;
+      cells[idx(rows,cols,r,c)].mine = true;
+    }
+  }
+  // compute neighbor counts
+  for (let r=0;r<rows;r++){
+    for (let c=0;c<cols;c++){
+      const i = idx(rows,cols,r,c);
+      if (cells[i].mine) { cells[i].count = -1; continue; }
+      let cnt = 0;
+      for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++){
+        if (dr===0 && dc===0) continue;
+        const rr = r+dr, cc = c+dc;
+        if (!inBounds(rows, cols, rr, cc)) continue;
+        if (cells[idx(rows,cols,rr,cc)].mine) cnt++;
+      }
+      cells[i].count = cnt;
+    }
+  }
+  return grid;
+}
 
-  <!-- three.js and viewer module -->
-  <script src="https://unpkg.com/three@0.156.0/build/three.min.js"></script>
-  <script type="module" src="./3dviewer.js"></script>
+function revealCell(grid, r, c) {
+  const { rows, cols, cells } = grid;
+  const i = idx(rows, cols, r, c);
+  const cell = cells[i];
+  if (!cell || cell.revealed || cell.flagged) return { changed: [], exploded: false };
+  if (cell.mine) { cell.revealed = true; return { changed: [ [r,c] ], exploded: true }; }
+  // flood fill if count === 0
+  const changed = [];
+  const stack = [[r,c]];
+  while (stack.length) {
+    const [rr, cc] = stack.pop();
+    const ii = idx(rows,cols,rr,cc);
+    const ccObj = cells[ii];
+    if (ccObj.revealed || ccObj.flagged) continue;
+    ccObj.revealed = true; changed.push([rr,cc]);
+    if (ccObj.count === 0) {
+      for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++){
+        if (dr===0 && dc===0) continue;
+        const nr=rr+dr, nc=cc+dc;
+        if (!inBounds(rows, cols, nr, nc)) continue;
+        const nidx = idx(rows,cols,nr,nc);
+        if (!cells[nidx].revealed && !cells[nidx].flagged) stack.push([nr,nc]);
+      }
+    }
+  }
+  return { changed, exploded: false };
+}
 
-  <!-- load app script that populates the dropdown and binds render button -->
-  <script src="./app.js"></script>
-</body>
-</html>
+function toggleFlag(grid, r, c) {
+  const { rows, cols, cells } = grid;
+  const i = idx(rows, cols, r, c);
+  const cell = cells[i];
+  if (!cell || cell.revealed) return null;
+  cell.flagged = !cell.flagged;
+  return cell.flagged;
+}
+
+function checkWin(grid) {
+  const { cells } = grid;
+  return cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed));
+}
+
+module.exports = { createGrid, placeMines, revealCell, toggleFlag, checkWin, idx, inBounds };
