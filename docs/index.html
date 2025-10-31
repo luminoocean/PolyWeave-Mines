@@ -2,38 +2,38 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>PolyWeave Mines — LumiOcean</title>
+  <title>PolyWeave Mines — Minesweeper (MVP)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="./style.css" />
-  <style>
-    /* small page-level defaults so the inlined app looks good */
-    body { background: #00121a; color: #dff6ff; font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; padding: 24px; }
-    main { max-width: 980px; margin: 0 auto; }
-    header h1 { margin: 0 0 6px; }
-    header p { color: #9bb4c9; margin: 0 0 16px; }
-    .muted { color: #9bb4c9; font-size: 13px; }
-  </style>
 </head>
 <body>
   <main>
-    <header style="text-align:center;padding:18px 8px 6px;">
+    <header class="site-header">
       <h1>PolyWeave Mines</h1>
-      <p class="muted">LumiOcean — N‑dimensional Minesweeper experiment (MVP: 2D playable first)</p>
+      <p class="muted">Simple 2D Minesweeper with configurable neighbor shapes</p>
     </header>
 
-    <!-- App placeholder. docs/app.js will create the Minesweeper UI inside #appRoot -->
-    <section id="appRoot" aria-live="polite" style="margin-top:12px"></section>
-<label>Shape
-  <select id="shapeSelect"></select>
-</label>
-<button id="applyShape">Apply shape</button>
+    <section id="controls" class="controls">
+      <div class="controls-row">
+        <label>Rows <input id="msRows" type="number" value="9" min="3"></label>
+        <label>Cols <input id="msCols" type="number" value="9" min="3"></label>
+        <label>Mines <input id="msMines" type="number" value="10" min="1"></label>
 
-    <footer style="margin-top:18px;color:#9bb4c9;font-size:13px;text-align:center">
-      This page hosts a simple Minesweeper playground. Use the controls above to start a new game.
-    </footer>
+        <label>Shape
+          <select id="shapeSelect"></select>
+        </label>
+        <button id="applyShape">Apply shape</button>
+
+        <button id="newGame">New Game</button>
+        <div id="msStatus" class="muted status">Ready</div>
+      </div>
+    </section>
+
+    <section id="appRoot"></section>
+
+    <footer class="footer muted">Controls: left-click reveal; right-click flag. Shape changes recompute neighbor counts.</footer>
   </main>
 
-  <!-- load the simplified Minesweeper app (docs/app.js) -->
   <script type="module" src="./app.js"></script>
 </body>
 </html>
