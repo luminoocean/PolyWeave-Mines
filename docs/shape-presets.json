@@ -1,0 +1,9 @@
+[
+  {"id":"square-2d","dims":2,"type":"explicit","cells":[[0,0],[1,0],[0,1],[1,1]]},
+  {"id":"cross-2d","dims":2,"type":"implicit","rule":{"type":"manhattan","radius":1}},
+  {"id":"hex-2d","dims":2,"type":"implicit","rule":{"type":"hexagon","radius":1}},
+  {"id":"cube-3d","dims":3,"type":"explicit","cells":[[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]]},
+  {"id":"hollow-cube-3d","dims":3,"type":"implicit","rule":{"type":"shell","min":1,"max":2}},
+  {"id":"tesseract-4d","dims":4,"type":"generator","params":{"type":"hypercube","size":2}},
+  {"id":"hyperplane-4d","dims":4,"type":"implicit","rule":{"type":"hyperplane","axis":3,"value":0}}
+]
