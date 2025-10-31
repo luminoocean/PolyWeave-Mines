@@ -164,15 +164,32 @@
     cubesGroup.add(m);
   }
 
-  // Render a block of slices centered at sliceIndex with thickness (number of slices)
-  // thickness = 1 => single slice, thickness >1 => symmetric around sliceIndex
-  function renderSlicesForPreset(preset, sliceIndex = 0, thickness = 1) {
-    clearCubes();
-    if (!preset) { status.textContent = 'No preset selected'; return; }
-    const cells = expandPresetToCells(preset);
-    const dims = preset.dims || (cells[0] ? cells[0].length : 2);
-    const ranges = axisRanges(cells, dims);
-    const depthAxis = Math.max(0, Math.min(dims-1, dims-1)); // last axis by default
+ // (replace the existing updateSliceInfo function and any slice min/max assignment logic with this)
+
+function updateSliceInfo() {
+  const id = presetSelect ? presetSelect.value : presets[0] && presets[0].id;
+  const preset = presets.find(p=>p.id===id);
+  if (!preset) { status.textContent = 'No preset'; return; }
+  const cells = expandPresetToCells(preset);
+  const dims = preset.dims || (cells[0] ? cells[0].length : 2);
+  const ranges = axisRanges(cells, dims);
+  const depthAxis = dims - 1;
+
+  // coerce to integer bounds for slice controls
+  const intMin = Math.floor(Number(ranges.mins[depthAxis] ?? 0));
+  const intMax = Math.ceil(Number(ranges.maxs[depthAxis] ?? 0));
+
+  // apply integer bounds to the input attributes
+  sliceEl.min = intMin;
+  sliceEl.max = intMax;
+
+  // clamp and coerce current value to integer
+  let current = Number(sliceEl.value) || 0;
+  current = Math.max(intMin, Math.min(intMax, Math.round(current)));
+  sliceEl.value = current;
+
+  status.textContent = `Preset ${preset.id} axis ${depthAxis} valid ${intMin}..${intMax}`;
+}
 
     // compute valid slice min/max on depthAxis
     const sliceMin = ranges.mins[depthAxis], sliceMax = ranges.maxs[depthAxis];
