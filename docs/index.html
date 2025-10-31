@@ -7,37 +7,95 @@
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <main style="font-family:system-ui,Segoe UI,Roboto,Arial;max-width:900px;margin:72px auto;text-align:center;color:#dff6ff;background:#071026;padding:40px;border-radius:12px;">
-    <h1 style="margin:0 0 12px;">PolyWeave Mines</h1>
-    <p style="color:#9bb4c9;margin:0 0 18px;">LumiOcean — N‑dimensional Minesweeper experiment (2D/3D/4D tilings)</p>
-    <p>
-  <button id="openScript" style="background:transparent;border:0;color:#9be7ff;cursor:pointer;text-decoration:underline;padding:0;margin:0">Playground script</button>
-  &nbsp;•&nbsp;
-  <button id="openPresets" style="background:transparent;border:0;color:#9be7ff;cursor: pointer;text-decoration:underline;padding:0;margin:0">Shape presets</button>
-</p>
-    <script>
-  document.getElementById('openScript').addEventListener('click', () => window.open('./app.js', '_blank'));
-  document.getElementById('openPresets').addEventListener('click', () => window.open('./shape-presets.json', '_blank'));
-</script>
-    <p style="font-size:13px;color:#9bb4c9;margin-top:18px;">This page proves GitHub Pages works. Replace with the app later.</p>
+  <main style="font-family:system-ui,Segoe UI,Roboto,Arial;max-width:980px;margin:48px auto;color:#dff6ff;">
+    <header style="text-align:center;padding:24px 12px">
+      <h1 style="margin:0 0 6px;">PolyWeave Mines</h1>
+      <p style="color:#9bb4c9;margin:0 0 8px;">LumiOcean — N‑dimensional Minesweeper experiment (2D/3D/4D tilings)</p>
+
+      <p>
+        <button id="openScript" style="background:transparent;border:0;color:#9be7ff;cursor:pointer;text-decoration:underline;padding:0;margin:0">Playground script</button>
+        &nbsp;•&nbsp;
+        <button id="openPresets" style="background:transparent;border:0;color:#9be7ff;cursor:pointer;text-decoration:underline;padding:0;margin:0">Shape presets</button>
+      </p>
+    </header>
+
+    <section id="controls" style="display:grid;gap:12px;padding:12px">
+      <div style="display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap">
+        <label style="display:flex;flex-direction:column;align-items:flex-start;color:#9bb4c9">
+          Preset
+          <select id="presetSelect" style="min-width:220px"></select>
+        </label>
+
+        <label style="display:flex;flex-direction:column;align-items:flex-start;color:#9bb4c9">
+          Slice index
+          <input id="sliceInput" type="number" value="0" style="width:80px" />
+        </label>
+
+        <button id="renderBtn">Render slice</button>
+        <div id="meshMsg" style="align-self:center;color:#9bb4c9;font-size:13px">Preview ready</div>
+      </div>
+    </section>
+
+    <section id="preview" style="padding:12px">
+      <canvas id="canvas2d" width="720" height="360" style="display:block;margin:0 auto;border-radius:8px"></canvas>
+      <section id="info" style="margin-top:12px">
+        <p class="muted" style="margin:0">Use the dropdown to pick a shape. Click Render slice to preview the 2D projection (first two axes). Then click Open 3D to view a voxelized slice in 3D.</p>
+      </section>
+    </section>
+
     <!-- 3D viewer container -->
-<section id="viewer3d" style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:18px;">
-  <div style="display:flex;gap:8px;align-items:center;">
-    <label style="color:#9bb4c9">Show 3D slice</label>
-    <button id="show3dBtn" style="padding:8px 10px;border-radius:8px;border:0;background:linear-gradient(90deg,#0ea5b3,#7ce7ff);cursor:pointer">Open 3D</button>
-    <label style="color:#9bb4c9;margin-left:12px">Slice index
-      <input id="slice3dInput" type="number" value="0" style="width:64px;margin-left:8px;padding:6px;border-radius:6px;background:transparent;color:inherit;border:1px solid rgba(155,231,255,0.08)" />
-    </label>
-  </div>
+    <section id="viewer3d" style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:18px;">
+      <div style="display:flex;gap:8px;align-items:center;">
+        <label style="color:#9bb4c9">Show 3D slice</label>
+        <button id="show3dBtn" style="padding:8px 10px;border-radius:8px;border:0;background:linear-gradient(90deg,#0ea5b3,#7ce7ff);cursor:pointer">Open 3D</button>
+        <label style="color:#9bb4c9;margin-left:12px">Slice index
+          <input id="slice3dInput" type="number" value="0" style="width:64px;margin-left:8px;padding:6px;border-radius:6px;background:transparent;color:inherit;border:1px solid rgba(155,231,255,0.08)" />
+        </label>
+      </div>
 
-  <div id="threeRoot" style="width:720px;height:420px;border-radius:8px;overflow:hidden;background:#021023;display:none"></div>
-  <div id="threeMsg" style="color:#9bb4c9;font-size:13px"></div>
-</section>
+      <div id="threeRoot" style="width:720px;height:420px;border-radius:8px;overflow:hidden;background:#021023;display:none"></div>
+      <div id="threeMsg" style="color:#9bb4c9;font-size:13px"></div>
+    </section>
 
-<!-- three.js + viewer script -->
-<script src="https://unpkg.com/three@0.156.0/build/three.min.js"></script>
-<script type="module" src="./3dviewer.js"></script>
-
+    <footer style="padding:18px;text-align:center;color:#9bb4c9;font-size:13px">
+      This page proves GitHub Pages works. Replace with the app later.
+    </footer>
   </main>
+
+  <!-- scripts -->
+  <script>
+    // header buttons open raw files in a new tab (no navigation away from app)
+    document.getElementById('openScript').addEventListener('click', () => window.open('./app.js', '_blank'));
+    document.getElementById('openPresets').addEventListener('click', () => window.open('./shape-presets.json', '_blank'));
+
+    // keep slice inputs synchronized for convenience
+    const sliceInput = document.getElementById('sliceInput');
+    const slice3dInput = document.getElementById('slice3dInput');
+    sliceInput.addEventListener('input', () => { slice3dInput.value = sliceInput.value; });
+    slice3dInput.addEventListener('input', () => { sliceInput.value = slice3dInput.value; });
+
+    // auto-trigger render before opening 3D (safer UX)
+    function autoRenderIfAvailable() {
+      const renderBtn = document.getElementById('renderBtn');
+      if (renderBtn) renderBtn.click();
+    }
+    document.getElementById('show3dBtn').addEventListener('click', () => {
+      // ensure 2D preview is current before opening 3D
+      autoRenderIfAvailable();
+      // small delay to let render complete (should be instantaneous); then show viewer
+      setTimeout(() => {
+        const root = document.getElementById('threeRoot');
+        root.style.display = 'block';
+        // if docs/3dviewer.js is a module it will attach its own handlers; if not, we still show the panel
+      }, 150);
+    });
+  </script>
+
+  <!-- three.js and viewer module -->
+  <script src="https://unpkg.com/three@0.156.0/build/three.min.js"></script>
+  <script type="module" src="./3dviewer.js"></script>
+
+  <!-- load app script that populates the dropdown and binds render button -->
+  <script src="./app.js"></script>
 </body>
 </html>
