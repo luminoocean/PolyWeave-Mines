@@ -1,5 +1,5 @@
 // docs/app.js — Minesweeper (2D) with shape options and chord (number-click) behavior
-// Replace the existing docs/app.js with this file exactly.
+// Self-contained, uses controls from docs/index.html (no injected duplicate controls)
 
 const SHAPES = {
   "square-8": { label: "Square 8 (standard)", offsets: [ [-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1] ] },
@@ -10,7 +10,7 @@ const SHAPES = {
   "custom": { label: "Custom (edit)", offsets: [] }
 };
 
-// DOM references: we expect the controls to be in docs/index.html (one set only)
+// DOM refs (must match docs/index.html)
 const appRoot = document.getElementById('appRoot');
 const msRows = document.getElementById('msRows');
 const msCols = document.getElementById('msCols');
@@ -20,14 +20,15 @@ const msStatus = document.getElementById('msStatus');
 const shapeSelect = document.getElementById('shapeSelect');
 const applyShapeBtn = document.getElementById('applyShape');
 
+// sanity
 if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !shapeSelect || !applyShapeBtn || !msStatus) {
   console.error('Missing expected DOM controls. Ensure docs/index.html contains the control elements with correct IDs.');
 }
 
-// populate shapes dropdown (idempotent)
+// populate shape dropdown
 function populateShapes() {
-  // clear any existing options to avoid duplicates
-  while (shapeSelect && shapeSelect.firstChild) shapeSelect.removeChild(shapeSelect.firstChild);
+  if (!shapeSelect) return;
+  shapeSelect.innerHTML = '';
   Object.keys(SHAPES).forEach(k => {
     const o = document.createElement('option');
     o.value = k; o.textContent = SHAPES[k].label;
@@ -35,11 +36,10 @@ function populateShapes() {
   });
 }
 populateShapes();
-
-let currentShape = shapeSelect && shapeSelect.value ? shapeSelect.value : 'square-8';
+let currentShape = shapeSelect.value || 'square-8';
 shapeSelect.value = currentShape;
 
-// grid helpers
+// helpers
 function idx(rows, cols, r, c){ return r*cols + c; }
 function inBounds(rows, cols, r, c){ return r>=0 && r<rows && c>=0 && c<cols; }
 
@@ -80,7 +80,8 @@ function placeMines(grid, mineCount, safeCell = null){
   if (safeCell) {
     const [sr, sc] = safeCell;
     const offsets = (SHAPES[currentShape] && SHAPES[currentShape].offsets) || SHAPES['square-8'].offsets;
-    offsets.concat([[0,0]]).forEach(([dr,dc]) => {
+    // include the cell itself
+    [[0,0]].concat(offsets).forEach(([dr,dc]) => {
       const rr = sr + dr, cc = sc + dc;
       if (!inBounds(rows,cols,rr,cc)) return;
       forbidden.add(idx(rows,cols,rr,cc));
@@ -166,7 +167,7 @@ function checkWin(grid){
   return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed));
 }
 
-// UI rendering and interaction
+// UI and state
 let gameGrid = null;
 let running = false;
 let firstClick = true;
@@ -200,17 +201,15 @@ function renderBoard(){
         td.textContent = '';
       }
 
-      // left-click handler
+      // left-click handler (includes chord when clicking a revealed number)
       td.addEventListener('click', (e)=> {
         if (!running) return;
         const rr = Number(td.dataset.r), cc = Number(td.dataset.c);
         const cellNow = gameGrid.cells[idx(gameGrid.rows, gameGrid.cols, rr, cc)];
 
-        // chord behavior: clicking a revealed number tries to reveal unflagged neighbors
         if (cellNow.revealed && cellNow.count > 0) {
           const flagged = countFlaggedNeighbors(gameGrid, rr, cc);
           if (flagged === cellNow.count) {
-            // reveal all unflagged neighbors
             const toReveal = revealUnflaggedNeighbors(gameGrid, rr, cc);
             let exploded = false;
             for (const [ar, ac] of toReveal) {
@@ -228,11 +227,10 @@ function renderBoard(){
             renderBoard();
             return;
           }
-          // if flagged != number, do nothing (or you could flash UI)
           return;
         }
 
-        // normal first-click behavior
+        // normal reveal
         if (firstClick){
           placeMines(gameGrid, Number(msMines.value), [rr,cc]);
           firstClick = false;
@@ -249,7 +247,7 @@ function renderBoard(){
         renderBoard();
       });
 
-      // right-click handler for flags
+      // right-click flag
       td.addEventListener('contextmenu', (e)=> {
         e.preventDefault();
         if (!running) return;
@@ -279,12 +277,11 @@ function startNewGame(auto = false){
   renderBoard();
 }
 
-// wiring: use the single set of controls in index.html
+// Wiring
 newGameBtn.addEventListener('click', ()=> startNewGame());
 applyShapeBtn.addEventListener('click', ()=> {
   currentShape = shapeSelect.value;
   if (gameGrid) {
-    // recompute counts with the new shape but preserve mines/flags/revealed
     computeCountsWithShape(gameGrid, currentShape);
     renderBoard();
     msStatus.textContent = `Applied shape ${SHAPES[currentShape].label}`;
@@ -293,5 +290,5 @@ applyShapeBtn.addEventListener('click', ()=> {
   }
 });
 
-// start initial board
+// Start
 startNewGame();
