@@ -10,7 +10,7 @@
   <main>
     <header class="site-header">
       <h1>PolyWeave Mines</h1>
-      <p class="muted">Simple 2D Minesweeper with configurable neighbor shapes</p>
+      <p class="muted">2D Minesweeper with configurable tilings and adjacency rules</p>
     </header>
 
     <section id="controls" class="controls">
@@ -19,10 +19,14 @@
         <label>Cols <input id="msCols" type="number" value="9" min="3"></label>
         <label>Mines <input id="msMines" type="number" value="10" min="1"></label>
 
-        <label>Shape
-          <select id="shapeSelect"></select>
+        <label>Tiling
+          <select id="tilingSelect"></select>
         </label>
-        <button id="applyShape">Apply shape</button>
+
+        <label>Adjacency
+          <select id="adjacencySelect"></select>
+        </label>
+        <button id="applyAdjacency">Apply adjacency</button>
 
         <button id="newGame">New Game</button>
         <div id="msStatus" class="muted status">Ready</div>
@@ -31,7 +35,7 @@
 
     <section id="appRoot"></section>
 
-    <footer class="footer muted">Controls: left-click reveal; right-click flag; click a revealed number to chord when flagged neighbors match the number.</footer>
+    <footer class="footer muted">Left-click reveal; right-click flag. Click a revealed number to chord when flagged neighbors match the number.</footer>
   </main>
 
   <script type="module" src="./app.js"></script>
