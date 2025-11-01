@@ -247,7 +247,7 @@ function computeHexPolygon(cx, cy, radius, gapPx=1.0) {
   const visualR = Math.max(1, radius - gapPx);
   const pts = [];
   for (let k=0;k<6;k++){
-    const angle = Math.PI/6 + k*Math.PI/3;
+    const angle = Math.PI/3 + k*Math.PI/3;
     pts.push([cx + visualR*Math.cos(angle), cy + visualR*Math.sin(angle)]);
   }
   return pts;
