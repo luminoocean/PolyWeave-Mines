@@ -18,7 +18,7 @@ input[type="number"], select{ background: rgba(6,20,28,0.6); border:1px solid rg
 .ms-btn.primary{ background: linear-gradient(var(--accent), #0b98ad); color:#042426; font-weight:600; }
 #msStatus{ padding:8px 12px; font-size:13px; color:var(--sub); }
 
-#appRoot{ padding:12px; min-height:320px; }
+#appRoot{ padding:12px; min-height:320px; position:relative; }
 
 svg{ width:100%; height:auto; display:block; background:transparent; }
 .tile{ transition:fill 110ms ease, transform 110ms ease; cursor:pointer; }
@@ -41,7 +41,7 @@ input[type="range"]::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; 
 .ms-modal-footer{ display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }
 
 /* debug overlay */
-.debug-overlay { position:absolute; left:8px; top:64px; pointer-events:none; color: rgba(255,255,255,0.7); font-size:11px; }
+.debug-overlay { position:absolute; left:8px; top:64px; pointer-events:none; color: rgba(255,255,255,0.7); font-size:11px; background: rgba(0,0,0,0.36); padding:6px; border-radius:6px; }
 
 /* responsive */
 @media (max-width:640px){ .ms-modal-panel{ width: calc(100% - 28px); } input[type="range"]{ width:120px; } }
