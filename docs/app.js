@@ -1,4 +1,6 @@
-// app.js — final fixes (rigid triangle transforms, constant stroke, inverse label scaling, select contrast)
+// app.js — precise fixes: rigid translations for gaps (no vertex scaling), constant label & stroke sizes,
+// zoom scales geometry only, dropdown contrast fixed.
+
 const TILINGS = {
   square: { label: "Square", adjacencies: { "square-8": { label: "Square 8 (all 8)", offsets: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] }, "von-neumann": { label: "Von Neumann (4)", offsets: [[-1,0],[1,0],[0,-1],[0,1]] } } },
   triangle_right: { label: "Right Triangle (zig)", adjacencies: { "triR-edge": { label: "Edges (3)", offsets: null }, "triR-r2": { label: "Radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() } } },
@@ -20,7 +22,7 @@ function idx(rows, cols, r, c){ return r * cols + c; }
 function inBounds(rows, cols, r, c){ return r >= 0 && r < rows && c >= 0 && c < cols; }
 function createGrid(rows, cols){ return { rows, cols, cells: Array(rows*cols).fill(0).map(()=>({ mine:false, revealed:false, flagged:false, count:0 })) }; }
 
-/* ---------- adjacency helpers ---------- */
+/* adjacency helpers (unchanged) */
 function triangleRightOffsets(r,c,adjKey){
   const rightPointing = ((r + c) % 2) === 0;
   if (adjKey === 'triR-edge') return rightPointing ? [[0,-1],[1,0],[0,1]] : [[0,-1],[-1,0],[0,1]];
@@ -37,7 +39,7 @@ function getOffsetsFor(tilingKey, adjacencyKey){
   return (TILINGS[tilingKey] && TILINGS[tilingKey].adjacencies[adjacencyKey] && TILINGS[tilingKey].adjacencies[adjacencyKey].offsets) || [];
 }
 
-/* ---------- counts & mines ---------- */
+/* counts and mines (unchanged) */
 function computeCountsWithAdjacency(grid, tilingKey, adjacencyKey){
   const { rows, cols, cells } = grid;
   if (tilingKey === 'triangle_right'){
@@ -92,7 +94,7 @@ function placeMines(grid, mineCount, tilingKey, adjacencyKey, safeCell = null){
   computeCountsWithAdjacency(grid, tilingKey, adjacencyKey);
 }
 
-/* ---------- reveal / flag ---------- */
+/* reveal / flag (unchanged) */
 function revealCell(grid,r,c,tilingKey,adjacencyKey){
   const { rows, cols, cells } = grid;
   if (!inBounds(rows,cols,r,c)) return { changed: [], exploded:false };
@@ -121,13 +123,13 @@ function countFlaggedNeighbors(grid,r,c,tilingKey,adjacencyKey){ let offs; if (t
 function revealUnflaggedNeighbors(grid,r,c,tilingKey,adjacencyKey){ let offs; if (tilingKey==='triangle_right') offs = triangleRightOffsets(r,c,adjacencyKey); else if (tilingKey==='triangle_equi') offs = triangleEquiOffsets(r,c,adjacencyKey); else offs = getOffsetsFor(tilingKey, adjacencyKey); const toReveal=[]; for (const [dr,dc] of offs){ const rr=r+dr, cc=c+dc; if (!inBounds(grid.rows,grid.cols,rr,cc)) continue; const cell = grid.cells[idx(grid.rows,grid.cols,rr,cc)]; if (!cell.flagged && !cell.revealed) toReveal.push([rr,cc]); } return toReveal; }
 function checkWin(grid){ return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed)); }
 
-/* ---------- SVG / geometry helpers ---------- */
+/* SVG helpers */
 function makeSvgElement(tag, attrs={}){ const el = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) el.setAttribute(k, String(attrs[k])); return el; }
 function pointsToStr(points){ return points.map(p=>`${p[0]},${p[1]}`).join(' '); }
 function computeSquarePolygon(cx,cy,size){ const s=size/2; return [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]]; }
 function computeHexPolygon(cx,cy,radius){ const pts=[]; for (let k=0;k<6;k++){ const angle=k*Math.PI/3; pts.push([cx+radius*Math.cos(angle), cy+radius*Math.sin(angle)]); } return pts; }
 
-/* ---------- lattices (triangles) + helpers ---------- */
+/* lattice builders */
 function buildZigLattice(rows, cols, s, PAD = 8){
   const h = Math.sqrt(3)/2 * s;
   const vertexRows = rows + 1;
@@ -199,13 +201,9 @@ function computeTriangleCenters(vertices, triIndex){
   });
 }
 
-function translatePoints(points, dx, dy){ return points.map(p => [p.x + dx, p.y + dy]); }
+/* helpers: scale around centroid and constant stroke/label */
 function scalePointsAround(points, cx, cy, scale){
-  return points.map(p => {
-    const x = (p.x - cx) * scale + cx;
-    const y = (p.y - cy) * scale + cy;
-    return { x, y };
-  });
+  return points.map(p => ({ x: (p.x - cx) * scale + cx, y: (p.y - cy) * scale + cy }));
 }
 
 /* ---------- Render ---------- */
@@ -220,57 +218,55 @@ function renderTiledBoard(){
   const baseSize = Math.max(10, Math.min(56, rawBase));
   const tileType = currentTiling || 'square';
 
-  // read UI values fresh each render
+  // get current UI values
   const zoom = Math.max(0.1, Math.min(2.0, Number((document.getElementById('zoomSlider')||{value:1}).value || 1)));
   const gapX = Number((document.getElementById('xGapSlider')||{value:1}).value || 1);
   const gapY = Number((document.getElementById('yGapSlider')||{value:1}).value || 1);
   debugEnabled = !!(document.getElementById('debugToggle') && document.getElementById('debugToggle').checked);
 
-  const STROKE_WIDTH = 1.25; // constant stroke width regardless of zoom
-  const LABEL_FONT_CAP = 20; // px cap for label font size
+  const STROKE_WIDTH = 1.5; // constant regardless of zoom
+  const LABEL_CAP = 20;
 
-  // For labels we want readable size independent of zoom.
-  // Use inverse scaling: visualFont = baseFont / zoom, capped.
+  // For labels we want roughly constant visible size; choose base label and keep it near-constant
   const baseLabel = Math.max(10, baseSize / 4);
 
   if (tileType === 'triangle_right'){
     const lattice = buildZigLattice(rows, cols, baseSize, 8);
-    const { vertices, triIndex, w: svgW, h: svgH, centers, PAD } = lattice;
+    const { vertices, triIndex, w: svgW, h: svgH, PAD } = lattice;
 
-    // compute view extents based on zoom and gaps
-    const viewW = svgW * zoom * gapX;
-    const viewH = svgH * zoom * gapY;
+    // compute view extents using zoom (gaps will be applied by translation of centers, not scaling vertices)
+    const viewW = svgW * zoom + (gapX - 1) * cols * (baseSize * 0.35);
+    const viewH = svgH * zoom + (gapY - 1) * rows * (baseSize * 0.35);
     const svg = makeSvgElement('svg', { width: viewW, height: viewH, viewBox: `0 0 ${viewW} ${viewH}` });
     svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
 
-    const transformPoint = (x,y) => {
-      const tx = ((x - PAD) * zoom) * gapX + PAD * zoom * gapX;
-      const ty = ((y - PAD) * zoom) * gapY + PAD * zoom * gapY;
-      return { x: tx, y: ty };
-    };
+    // We'll use column and row indices to produce extra translation for gapX / gapY.
+    // This guarantees gaps shift tile centers without altering tile geometry.
+    const colCenter = (cols - 1) / 2;
+    const rowCenter = (rows - 1) / 2;
+    const gapXpx = (gapX - 1) * baseSize * 0.5; // per-column offset magnitude
+    const gapYpx = (gapY - 1) * baseSize * 0.45; // per-row offset magnitude
 
     for (let t=0; t<triIndex.length; t++){
       const ti = triIndex[t];
       const r = ti.r, c = ti.c;
-      const ptsBase = ti.verts.map(i => vertices[i]); // {x,y}
-      const baseCenter = { x: (ptsBase[0].x + ptsBase[1].x + ptsBase[2].x)/3, y: (ptsBase[0].y + ptsBase[1].y + ptsBase[2].y)/3 };
+      const ptsBase = ti.verts.map(i => vertices[i]);
+      const baseCx = (ptsBase[0].x + ptsBase[1].x + ptsBase[2].x) / 3;
+      const baseCy = (ptsBase[0].y + ptsBase[1].y + ptsBase[2].y) / 3;
 
-      // STEP 1: scale triangle about its centroid by zoom (so geometry scales uniformly)
-      // NOTE: scaling here is geometric zoom (tile size changes), not gap deformation.
-      const scaled = scalePointsAround(ptsBase, baseCenter.x, baseCenter.y, zoom);
+      // STEP 1: scale about centroid for zoom
+      const scaled = scalePointsAround(ptsBase, baseCx, baseCy, zoom);
 
-      // STEP 2: compute where the base centroid *should* be after gapX/gapY and zoom
-      const desiredCenter = transformPoint(baseCenter.x, baseCenter.y);
-
-      // find centroid of scaled points
+      // STEP 2: compute scaled centroid
       const centroidScaled = { x:(scaled[0].x + scaled[1].x + scaled[2].x)/3, y:(scaled[0].y + scaled[1].y + scaled[2].y)/3 };
 
-      // STEP 3: compute delta and translate scaled points rigidly
-      const dx = desiredCenter.x - centroidScaled.x;
-      const dy = desiredCenter.y - centroidScaled.y;
-      const finalPts = scaled.map(p => [p.x + dx, p.y + dy]);
+      // STEP 3: compute additional rigid translation from gap sliders using tile row/col positions
+      const extraX = (c - colCenter) * gapXpx;
+      const extraY = (r - rowCenter) * gapYpx;
 
-      // render polygon with constant stroke
+      // STEP 4: compute final points by applying rigid translation (centroidScaled -> centroidScaled + extra)
+      const finalPts = scaled.map(p => [p.x + extraX, p.y + extraY]);
+
       const poly = makeSvgElement('polygon', { points: pointsToStr(finalPts), stroke:'var(--accent)', 'stroke-width': STROKE_WIDTH, 'stroke-linejoin':'round', fill:'rgba(2,10,20,0.88)' });
       const cell = gameGrid.cells[idx(rows,cols,r,c)];
       if (cell.revealed) poly.setAttribute('fill','rgba(10,28,40,0.95)');
@@ -278,13 +274,13 @@ function renderTiledBoard(){
       if (cell.mine && cell.revealed) poly.setAttribute('fill','rgba(140,50,40,0.98)');
       poly.classList.add('tile');
 
-      // label: keep readable size by inverse-scaling with zoom
-      const rawFont = baseLabel / Math.max(0.5, zoom);
-      const fontSize = Math.min(LABEL_FONT_CAP, Math.max(8, rawFont));
       const lx = (finalPts[0][0]+finalPts[1][0]+finalPts[2][0])/3;
       const ly = (finalPts[0][1]+finalPts[1][1]+finalPts[2][1])/3 + 4;
 
+      // label: keep near-constant size regardless of zoom (scale with zoom^0.3 to avoid complete constancy)
+      const fontSize = Math.min(LABEL_CAP, Math.max(8, baseLabel * Math.pow(zoom, 0.15)));
       const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': fontSize });
+
       if (cell.revealed) {
         if (cell.mine) { label.textContent='💣'; label.setAttribute('fill','#fff'); }
         else if (cell.count>0) { label.textContent=String(cell.count); label.setAttribute('fill', NUMBER_COLORS[cell.count]||'#9be7ff'); }
@@ -308,36 +304,37 @@ function renderTiledBoard(){
     }
 
     appRoot.appendChild(svg);
-    if (debugEnabled) addDebugOverlay(`verts:${vertices.length} tris:${triIndex.length} gapX:${gapX.toFixed(2)} gapY:${gapY.toFixed(2)} zoom:${zoom.toFixed(2)}`);
+    if (debugEnabled) addDebugOverlay(`triangles:${triIndex.length} gapX:${gapX.toFixed(2)} gapY:${gapY.toFixed(2)} zoom:${zoom.toFixed(2)}`);
     return;
   }
 
   if (tileType === 'triangle_equi'){
     const lattice = buildDiamondEqui(rows, cols, baseSize, 8);
-    const { vertices, triIndex, w: svgW, h: svgH, centers, PAD } = lattice;
-    const viewW = svgW * zoom * gapX;
-    const viewH = svgH * zoom * gapY;
+    const { vertices, triIndex, w: svgW, h: svgH, PAD } = lattice;
+    const viewW = svgW * zoom + (gapX - 1) * cols * (baseSize * 0.35);
+    const viewH = svgH * zoom + (gapY - 1) * rows * (baseSize * 0.35);
     const svg = makeSvgElement('svg', { width: viewW, height: viewH, viewBox: `0 0 ${viewW} ${viewH}` });
     svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
 
-    const transformPoint = (x,y) => {
-      const tx = ((x - PAD) * zoom) * gapX + PAD * zoom * gapX;
-      const ty = ((y - PAD) * zoom) * gapY + PAD * zoom * gapY;
-      return { x: tx, y: ty };
-    };
+    const colCenter = (cols - 1) / 2;
+    const rowCenter = (rows - 1) / 2;
+    const gapXpx = (gapX - 1) * baseSize * 0.5;
+    const gapYpx = (gapY - 1) * baseSize * 0.45;
 
     for (let t=0; t<triIndex.length; t++){
       const ti = triIndex[t];
       const r = ti.r, c = ti.c;
       const ptsBase = ti.verts.map(i => vertices[i]);
-      const baseCenter = { x: (ptsBase[0].x + ptsBase[1].x + ptsBase[2].x)/3, y: (ptsBase[0].y + ptsBase[1].y + ptsBase[2].y)/3 };
+      const baseCx = (ptsBase[0].x + ptsBase[1].x + ptsBase[2].x) / 3;
+      const baseCy = (ptsBase[0].y + ptsBase[1].y + ptsBase[2].y) / 3;
 
-      const scaled = scalePointsAround(ptsBase, baseCenter.x, baseCenter.y, zoom);
-      const desiredCenter = transformPoint(baseCenter.x, baseCenter.y);
+      const scaled = scalePointsAround(ptsBase, baseCx, baseCy, zoom);
       const centroidScaled = { x:(scaled[0].x + scaled[1].x + scaled[2].x)/3, y:(scaled[0].y + scaled[1].y + scaled[2].y)/3 };
-      const dx = desiredCenter.x - centroidScaled.x;
-      const dy = desiredCenter.y - centroidScaled.y;
-      const finalPts = scaled.map(p => [p.x + dx, p.y + dy]);
+
+      const extraX = (c - colCenter) * gapXpx;
+      const extraY = (r - rowCenter) * gapYpx;
+
+      const finalPts = scaled.map(p => [p.x + extraX, p.y + extraY]);
 
       const poly = makeSvgElement('polygon', { points: pointsToStr(finalPts), stroke:'var(--accent)', 'stroke-width': STROKE_WIDTH, 'stroke-linejoin':'round', fill:'rgba(4,18,30,0.9)' });
       const cell = gameGrid.cells[idx(rows,cols,r,c)];
@@ -346,10 +343,9 @@ function renderTiledBoard(){
       if (cell.mine && cell.revealed) poly.setAttribute('fill','rgba(140,50,40,0.98)');
       poly.classList.add('tile');
 
-      const baseLabel = Math.max(10, baseSize / 4);
-      const fontSize = Math.min(LABEL_FONT_CAP, Math.max(8, baseLabel / Math.max(0.5, zoom)));
       const lx = (finalPts[0][0]+finalPts[1][0]+finalPts[2][0])/3;
       const ly = (finalPts[0][1]+finalPts[1][1]+finalPts[2][1])/3 + 4;
+      const fontSize = Math.min(LABEL_CAP, Math.max(8, baseLabel * Math.pow(zoom, 0.15)));
       const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': fontSize });
 
       if (cell.revealed) {
@@ -375,29 +371,33 @@ function renderTiledBoard(){
     }
 
     appRoot.appendChild(svg);
-    if (debugEnabled) addDebugOverlay(`verts:${vertices.length} tris:${triIndex.length} gapX:${gapX.toFixed(2)} gapY:${gapY.toFixed(2)} zoom:${zoom.toFixed(2)}`);
+    if (debugEnabled) addDebugOverlay(`triangles:${triIndex.length} gapX:${gapX.toFixed(2)} gapY:${gapY.toFixed(2)} zoom:${zoom.toFixed(2)}`);
     return;
   }
 
-  // fallback: square / hex - translate centers rigidly based on gapX/gapY and zoom
-  const gapXc = gapX;
-  const gapYc = gapY;
-  const zoomc = zoom;
+  // fallback: square / hex — compute centers and place tiles, gaps applied as per-column / per-row offsets
+  const colCenter = (cols - 1) / 2;
+  const rowCenter = (rows - 1) / 2;
+  const gapXpx = (gapX - 1) * baseSize * 0.5;
+  const gapYpx = (gapY - 1) * baseSize * 0.45;
 
   let centersInfo;
-  if (currentTiling === 'hex') centersInfo = hexCenter(rows, cols, (baseSize/2) * zoomc);
-  else centersInfo = squareCenter(rows, cols, baseSize * zoomc);
+  if (currentTiling === 'hex') centersInfo = hexCenter(rows, cols, (baseSize/2) * zoom);
+  else centersInfo = squareCenter(rows, cols, baseSize * zoom);
 
-  const svg = makeSvgElement('svg', { width: centersInfo.w * gapXc, height: centersInfo.h * gapYc, viewBox: `0 0 ${centersInfo.w * gapXc} ${centersInfo.h * gapYc}` });
+  const viewW = centersInfo.w + Math.abs(gapXpx) * cols;
+  const viewH = centersInfo.h + Math.abs(gapYpx) * rows;
+  const svg = makeSvgElement('svg', { width: viewW, height: viewH, viewBox: `0 0 ${viewW} ${viewH}` });
   svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
 
   for (const cellInfo of centersInfo.centers){
     const r = cellInfo.r, c = cellInfo.c;
-    const cx = cellInfo.x * gapXc;
-    const cy = cellInfo.y * gapYc;
+    const cx = cellInfo.x + (c - colCenter) * gapXpx;
+    const cy = cellInfo.y + (r - rowCenter) * gapYpx;
+
     let pts;
-    if (currentTiling === 'hex') pts = computeHexPolygon(cx, cy, (baseSize/2) * zoomc);
-    else pts = computeSquarePolygon(cx, cy, baseSize * zoomc);
+    if (currentTiling === 'hex') pts = computeHexPolygon(cx, cy, (baseSize/2) * zoom);
+    else pts = computeSquarePolygon(cx, cy, baseSize * zoom);
 
     const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'var(--accent)', 'stroke-width': STROKE_WIDTH, 'stroke-linejoin':'round', fill:'rgba(2,10,20,0.9)' });
     const cell = gameGrid.cells[idx(rows,cols,r,c)];
@@ -405,7 +405,7 @@ function renderTiledBoard(){
     if (cell.flagged) poly.setAttribute('fill','rgba(60,20,20,0.95)');
     if (cell.mine && cell.revealed) poly.setAttribute('fill','rgba(140,50,40,0.98)');
 
-    const fontSize = Math.min(LABEL_FONT_CAP, Math.max(8, (baseSize/4) / Math.max(0.5, zoomc)));
+    const fontSize = Math.min(LABEL_CAP, Math.max(8, baseLabel * Math.pow(zoom, 0.15)));
     const label = makeSvgElement('text', { x: cx, y: cy + 4, 'text-anchor': 'middle', 'font-size': fontSize });
     if (cell.revealed) {
       if (cell.mine) { label.textContent='💣'; label.setAttribute('fill','#fff'); }
@@ -444,7 +444,7 @@ function renderTiledBoard(){
   appRoot.appendChild(svg);
 }
 
-/* debug overlay helper */
+/* debug overlay */
 function addDebugOverlay(text){
   debugEl = document.createElement('div');
   debugEl.className = 'debug-overlay';
@@ -453,11 +453,11 @@ function addDebugOverlay(text){
   root.appendChild(debugEl);
 }
 
-/* ---------- centers helpers ---------- */
+/* centers helpers */
 function squareCenter(rows, cols, size){ const PAD=8; const centers=[]; for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){ const x = c*size + size/2 + PAD; const y = r*size + size/2 + PAD; centers.push({r,c,x,y}); } return { centers, w: cols*size + 16, h: rows*size + 16 }; }
 function hexCenter(rows, cols, radius){ const R = radius; const hexWidth = 2*R; const hexHeight = Math.sqrt(3)*R; const xStep = 1.5*R; const yStep = hexHeight; const centers=[]; const PAD=8; for(let r=0;r<rows;r++){ for(let c=0;c<cols;c++){ const x = c*xStep + R + PAD; const y = r*yStep + ((c&1)?(hexHeight/2):0) + R + PAD; centers.push({r,c,x,y}); } } const w = (cols-1)*xStep + hexWidth + PAD*2; const h = (rows-1)*yStep + hexHeight + PAD*2; return { centers, w, h }; }
 
-/* ---------- controls wiring ---------- */
+/* controls wiring */
 function startNewGame(){
   const rows = Math.max(3, Number((document.getElementById('msRows')||{value:9}).value || 9));
   const cols = Math.max(3, Number((document.getElementById('msCols')||{value:9}).value || 9));
