@@ -664,12 +664,48 @@ applyAdjacencyBtn.addEventListener('click', ()=> {
 
 newGameBtn.addEventListener('click', ()=> startNewGame());
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', populateTilingControls);
-} else {
+// Robust initialization: ensure DOM is ready, controls exist, then populate and start
+function initOnceDomReady() {
+  // re-check DOM refs in case script ran too early
+  if (!tilingSelect || !adjacencySelect || !msRows || !msCols || !msMines || !newGameBtn || !applyAdjacencyBtn || !appRoot || !msStatus) {
+    // try to rebind the DOM elements by id in case module scope had stale refs
+    // (this helps in cases where script executed before DOM but variables captured earlier)
+    const _appRoot = document.getElementById('appRoot');
+    const _msRows = document.getElementById('msRows');
+    const _msCols = document.getElementById('msCols');
+    const _msMines = document.getElementById('msMines');
+    const _newGameBtn = document.getElementById('newGame');
+    const _msStatus = document.getElementById('msStatus');
+    const _tilingSelect = document.getElementById('tilingSelect');
+    const _adjacencySelect = document.getElementById('adjacencySelect');
+    const _applyAdjacencyBtn = document.getElementById('applyAdjacency');
+    if (_appRoot) window.appRoot = _appRoot;
+    if (_msRows) window.msRows = _msRows;
+    if (_msCols) window.msCols = _msCols;
+    if (_msMines) window.msMines = _msMines;
+    if (_newGameBtn) window.newGameBtn = _newGameBtn;
+    if (_msStatus) window.msStatus = _msStatus;
+    if (_tilingSelect) window.tilingSelect = _tilingSelect;
+    if (_adjacencySelect) window.adjacencySelect = _adjacencySelect;
+    if (_applyAdjacencyBtn) window.applyAdjacencyBtn = _applyAdjacencyBtn;
+  }
+
+  // If still missing, abort and log
+  if (!document.getElementById('tilingSelect') || !document.getElementById('adjacencySelect')) {
+    console.error('Initialization failed: tiling/adacency controls not found in DOM.');
+    return;
+  }
+
+  // Now populate controls and start
   populateTilingControls();
+  currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
+  currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
+  startNewGame();
 }
 
-currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
-currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
-startNewGame();
+// Always attach DOMContentLoaded and also run immediately if ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initOnceDomReady);
+} else {
+  initOnceDomReady();
+}
