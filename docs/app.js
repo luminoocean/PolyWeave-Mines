@@ -1,5 +1,5 @@
 // docs/app.js — Full Minesweeper app with Tiling + Adjacency and SVG tile rendering
-// This version uses spacing tweaks so tiles don't touch. Replace your docs/app.js with this file exactly.
+// Replaces previous file. Uses exact lattice center math and a visual gapPx to ensure tiles do not touch.
 // Expects controls in docs/index.html with IDs:
 // msRows, msCols, msMines, tilingSelect, adjacencySelect, applyAdjacency, newGame, msStatus, appRoot
 
@@ -259,51 +259,57 @@ function computeSquarePolygon(cx, cy, size) {
   const s = size/2;
   return [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]];
 }
-// precise hex polygon (pointy-top)
-function computeHexPolygon(cx, cy, radius) {
+
+// precise hex polygon (pointy-top) with a visual gapPx
+function computeHexPolygon(cx, cy, radius, gapPx = 1.0) {
+  const visualR = Math.max(1, radius - gapPx);
   const pts = [];
   for (let k=0;k<6;k++){
     const angle = Math.PI/6 + k*Math.PI/3;
-    pts.push([cx + radius*Math.cos(angle), cy + radius*Math.sin(angle)]);
+    pts.push([cx + visualR*Math.cos(angle), cy + visualR*Math.sin(angle)]);
   }
   return pts;
 }
-// precise triangle polygon with upward/downward orientation
-function computeTrianglePolygon(cx, cy, s, upward=true) {
-  const h = Math.sqrt(3) / 2 * s;
+
+// precise triangle polygon with upward/downward orientation using visual gapPx
+function computeTrianglePolygon(cx, cy, s, upward=true, gapPx = 1.0) {
+  const visualS = Math.max(2, s - 2*gapPx);
+  const h = Math.sqrt(3) / 2 * visualS;
   if (upward) {
     return [
       [cx, cy - (2/3) * h],
-      [cx - s/2, cy + (1/3) * h],
-      [cx + s/2, cy + (1/3) * h]
+      [cx - visualS/2, cy + (1/3) * h],
+      [cx + visualS/2, cy + (1/3) * h]
     ];
   } else {
     return [
       [cx, cy + (2/3) * h],
-      [cx - s/2, cy - (1/3) * h],
-      [cx + s/2, cy - (1/3) * h]
+      [cx - visualS/2, cy - (1/3) * h],
+      [cx + visualS/2, cy - (1/3) * h]
     ];
   }
 }
 
-// hex grid centers using pointy-top odd-r offset layout with GAP
+// --- Center calculations using exact lattice geometry (no GAP multipliers) ---
+
+// hex grid centers using pointy-top odd-r offset layout with exact steps
 function hexCenter(rows, cols, radius) {
-  const GAP = 1.04; // spacing multiplier >1 spreads hexes slightly apart
-  const hexWidth = 2 * radius;
-  const hexHeight = Math.sqrt(3) * radius;
-  const xStep = hexWidth * GAP;
-  const yStep = hexHeight * GAP;
+  const R = radius;
+  const hexWidth = 2 * R;
+  const hexHeight = Math.sqrt(3) * R;
+  const xStep = 1.5 * R;            // 3/2 * R
+  const yStep = hexHeight;          // sqrt(3) * R
   const centers = [];
   const PAD = 8;
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
-      const x = c * xStep + radius + PAD;
-      const y = r * yStep + ((c & 1) ? hexHeight / 2 * GAP : 0) + radius + PAD;
+      const x = c * xStep + R + PAD;
+      const y = r * yStep + ((c & 1) ? (hexHeight / 2) : 0) + R + PAD;
       centers.push({r,c,x,y});
     }
   }
   const w = (cols - 1) * xStep + hexWidth + PAD*2;
-  const h = (rows - 1) * yStep + hexHeight + hexHeight/2 + PAD*2;
+  const h = (rows - 1) * yStep + hexHeight + PAD*2;
   return {centers, w, h};
 }
 
@@ -318,13 +324,13 @@ function squareCenter(rows, cols, size) {
   return {centers, w: cols * size + 16, h: rows * size + 16};
 }
 
-// triangle centers arranged for exact equilateral tiling (alternating up/down) with GAP
+// triangle centers arranged for exact equilateral tiling (alternating up/down)
 function triangleCenter(rows, cols, s) {
-  const GAP = 1.03;
   const h = Math.sqrt(3)/2 * s;
+  // exact triangular lattice basis: x step s/2, y step h/2
+  const xStep = s / 2;
+  const yStep = h / 2;
   const centers = [];
-  const xStep = s * .75 * GAP;
-  const yStep = h * .75 * GAP;
   const PAD = 8;
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
@@ -350,11 +356,11 @@ function renderTiledBoard() {
   if (!gameGrid) return;
   const rows = gameGrid.rows, cols = gameGrid.cols;
 
-  // choose base tile size and spacing
+  // choose base tile size and spacing based on cols (no arbitrary global shrink)
   const requestedCols = Math.max(1, cols);
   const rawBase = Math.floor(720 / Math.max(8, requestedCols));
-  const SPACING = 0.92; // <1 reduces polygon size so gaps appear
-  const baseSize = Math.max(14, Math.min(48, Math.floor(rawBase * SPACING)));
+  const baseSize = Math.max(14, Math.min(48, rawBase));
+  const gapPx = 1.0; // visual separation in pixels; increase for larger gaps on high-DPI
 
   let centersInfo;
   const tileType = currentTiling || 'square';
@@ -370,16 +376,20 @@ function renderTiledBoard() {
     const r = cellInfo.r, c = cellInfo.c;
     const cx = cellInfo.x, cy = cellInfo.y;
     let pts;
-    if (tileType === 'hex') pts = computeHexPolygon(cx, cy, baseSize/2);
-    else if (tileType === 'triangle') pts = computeTrianglePolygon(cx, cy, baseSize, triangleOrientation(r,c));
+    if (tileType === 'hex') pts = computeHexPolygon(cx, cy, baseSize/2, gapPx);
+    else if (tileType === 'triangle') pts = computeTrianglePolygon(cx, cy, baseSize, triangleOrientation(r,c), gapPx);
     else pts = computeSquarePolygon(cx, cy, baseSize);
 
-    const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke: '#0ea5b3', 'stroke-width': 1, fill: '#022' });
+    const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke: '#0ea5b3', 'stroke-width': 1, 'stroke-linejoin': 'round', fill: '#022' });
     const cell = gameGrid.cells[idx(rows,cols,r,c)];
     if (cell.revealed) poly.setAttribute('fill','#032');
     if (cell.flagged) poly.setAttribute('fill','#041');
     if (cell.mine && cell.revealed) poly.setAttribute('fill','#550');
     poly.classList.add('tile');
+
+    // Optional tiny center dot for debug clarity (comment out in production)
+    // const dot = makeSvgElement('circle', { cx, cy, r: 0.8, fill: '#7ce7ff', 'pointer-events': 'none', opacity: 0.6 });
+    // svg.appendChild(dot);
 
     const label = makeSvgElement('text', { x: cx, y: cy + 4, 'text-anchor': 'middle', 'font-size': Math.max(12, baseSize/3), 'pointer-events': 'none', fill: '#9be7ff' });
     if (cell.revealed) {
