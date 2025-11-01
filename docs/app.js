@@ -49,6 +49,18 @@ if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !tilingSelect |
   console.error('Missing expected DOM controls. Ensure docs/index.html contains the control elements with correct IDs.');
 }
 
+// --- Visual constants ---
+const NUMBER_COLORS = {
+  1: '#3ec7ff', // blue
+  2: '#ff6b6b', // red
+  3: '#ffd27a', // yellow/orange
+  4: '#a88cff',
+  5: '#ff9fb3',
+  6: '#7ce7ff',
+  7: '#d3d3d3',
+  8: '#b0c4de'
+};
+
 // --- Helpers ---
 function idx(rows, cols, r, c){ return r*cols + c; }
 function inBounds(rows, cols, r, c){ return r>=0 && r<rows && c>=0 && c<cols; }
@@ -260,6 +272,21 @@ function computeSquarePolygon(cx, cy, size) {
   return [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]];
 }
 
+// compute triangle vertices from centroid (cx,cy)
+// s is the desired side length to draw (visual side length, i.e., after subtracting gap)
+function computeTrianglePolygonFromCentroid(cx, cy, s, upward = true) {
+  const h = Math.sqrt(3) / 2 * s;
+  // centroid is h/3 from base toward apex
+  const apexY = (upward ? cy - (2/3) * h : cy + (2/3) * h);
+  const baseY  = (upward ? cy + (1/3) * h : cy - (1/3) * h);
+  const half = s / 2;
+  return [
+    [cx, apexY],
+    [cx - half, baseY],
+    [cx + half, baseY]
+  ];
+}
+
 // precise hex polygon (pointy-top) with a visual gapPx
 function computeHexPolygon(cx, cy, radius, gapPx = 1.0) {
   const visualR = Math.max(1, radius - gapPx);
@@ -271,32 +298,53 @@ function computeHexPolygon(cx, cy, radius, gapPx = 1.0) {
   return pts;
 }
 
-// compute triangle vertices from centroid (cx,cy)
-// s is the desired side length to draw (visual side length, i.e., after subtracting gap)
-function computeTrianglePolygonFromCentroid(cx, cy, s, upward = true) {
-  const h = Math.sqrt(3) / 2 * s;
-  // centroid of equilateral triangle is located at distance h/3 from base toward apex
-  // For an upward triangle: apex is at (cx, cy - 2/3*h), bases at cy + 1/3*h
-  const apexY = (upward ? cy - (2/3) * h : cy + (2/3) * h);
-  const baseY  = (upward ? cy + (1/3) * h : cy - (1/3) * h);
-  const half = s / 2;
-  return [
-    [cx, apexY],
-    [cx - half, baseY],
-    [cx + half, baseY]
-  ];
-}
+// --- Center calculations using exact lattice geometry (no arbitrary GAP multipliers) ---
 
-// triangleCenter: compute centroids using exact lattice math so adjacent centroids match base/apex geometry
-function triangleCenter(rows, cols, s) {
-  const h = Math.sqrt(3) / 2 * s;      // full triangle height for nominal side s
-  const xStep = s / 2;                 // horizontal step between centroids
-  const yStep = (2/3) * h;             // vertical centroid step between adjacent up/down triangles
+// hex grid centers using pointy-top odd-q offset layout with exact steps
+// This places hexes in a honeycomb where edges are parallel across rows (pointy-top layout).
+function hexCenter(rows, cols, radius) {
+  const R = radius;
+  const hexWidth = 2 * R;
+  const hexHeight = Math.sqrt(3) * R;
+  // For pointy-top hexes the horizontal step is 3/2 * R and vertical is sqrt(3) * R
+  const xStep = 1.5 * R;
+  const yStep = hexHeight;
   const centers = [];
   const PAD = 8;
+  for (let r=0;r<rows;r++){
+    for (let c=0;c<cols;c++){
+      // odd-q style offset (stagger rows by column parity)
+      const x = c * xStep + R + PAD;
+      const y = r * yStep + ((c & 1) ? (hexHeight / 2) : 0) + R + PAD;
+      centers.push({r,c,x,y});
+    }
+  }
+  const w = (cols - 1) * xStep + hexWidth + PAD*2;
+  const h = (rows - 1) * yStep + hexHeight + PAD*2;
+  return {centers, w, h};
+}
 
+// square centers
+function squareCenter(rows, cols, size) {
+  const PAD = 8;
+  const centers = [];
+  for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){
+    const x = c * size + size/2 + PAD;
+    const y = r * size + size/2 + PAD;
+    centers.push({r,c,x,y});
+  }
+  return {centers, w: cols * size + 16, h: rows * size + 16};
+}
+
+// triangle centers arranged for exact equilateral tiling (alternating up/down)
+// Use centroid lattice: xStep = s/2, yStep = 2/3 * h so centroids of up/down triangles line up without apex/base overlap.
+function triangleCenter(rows, cols, s) {
+  const h = Math.sqrt(3)/2 * s;      // full triangle height for nominal side s
+  const xStep = s / 2;               // horizontal step between centroids
+  const yStep = (2/3) * h;           // vertical centroid step between adjacent up/down triangles
+  const centers = [];
+  const PAD = 8;
   // y0 positions first centroid so centroid is at distance h/3 from top edge of its bounding triangle
-  // we keep consistent with computeTrianglePolygonFromCentroid which uses centroid reference
   const y0 = PAD + h / 3;
 
   for (let r = 0; r < rows; r++) {
@@ -311,43 +359,6 @@ function triangleCenter(rows, cols, s) {
   const H = (rows - 1) * yStep + h + PAD * 2;
   return { centers, w, h: H };
 }
-
-function squareCenter(rows, cols, size) {
-  const PAD = 8;
-  const centers = [];
-  for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){
-    const x = c * size + size/2 + PAD;
-    const y = r * size + size/2 + PAD;
-    centers.push({r,c,x,y});
-  }
-  return {centers, w: cols * size + 16, h: rows * size + 16};
-}
-
-// Replace existing triangleCenter with this corrected version
-function triangleCenter(rows, cols, s) {
-  const h = Math.sqrt(3) / 2 * s;   // equilateral triangle height
-  const xStep = s / 2;              // half-side horizontal step
-  const yStep = (2/3) * h;          // correct centroid vertical step (prevents apex/base overlap)
-  const centers = [];
-  const PAD = 8;
-
-  // we position so first centroid sits with its centroid offset by h/3 from top of its triangle
-  // using base formulas that match computeTrianglePolygon centroid math
-  const y0 = PAD + h / 3;           // top-most centroid y offset
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x = c * xStep + s / 2 + PAD;
-      const y = r * yStep + y0;
-      centers.push({ r, c, x, y });
-    }
-  }
-
-  const w = (cols - 1) * xStep + s + PAD * 2;
-  const H = (rows - 1) * yStep + h + PAD * 2;
-  return { centers, w, h: H };
-}
-
 
 // --- UI and state ---
 let gameGrid = null;
@@ -382,8 +393,11 @@ function renderTiledBoard() {
     const cx = cellInfo.x, cy = cellInfo.y;
     let pts;
     if (tileType === 'hex') pts = computeHexPolygon(cx, cy, baseSize/2, gapPx);
-    else if (tileType === 'triangle') pts = computeTrianglePolygon(cx, cy, baseSize, triangleOrientation(r,c), gapPx);
-    else pts = computeSquarePolygon(cx, cy, baseSize);
+    else if (tileType === 'triangle') {
+      const nominalS = baseSize;
+      const visualS = Math.max(2, nominalS - 2*gapPx);
+      pts = computeTrianglePolygonFromCentroid(cx, cy, visualS, triangleOrientation(r,c));
+    } else pts = computeSquarePolygon(cx, cy, baseSize);
 
     const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke: '#0ea5b3', 'stroke-width': 1, 'stroke-linejoin': 'round', fill: '#022' });
     const cell = gameGrid.cells[idx(rows,cols,r,c)];
@@ -392,16 +406,32 @@ function renderTiledBoard() {
     if (cell.mine && cell.revealed) poly.setAttribute('fill','#550');
     poly.classList.add('tile');
 
-    // Optional tiny center dot for debug clarity (comment out in production)
-    // const dot = makeSvgElement('circle', { cx, cy, r: 0.8, fill: '#7ce7ff', 'pointer-events': 'none', opacity: 0.6 });
-    // svg.appendChild(dot);
+    const label = makeSvgElement('text', {
+      x: cx,
+      y: cy + 4,
+      'text-anchor': 'middle',
+      'font-size': Math.max(12, baseSize/3),
+      'pointer-events': 'none'
+    });
 
-    const label = makeSvgElement('text', { x: cx, y: cy + 4, 'text-anchor': 'middle', 'font-size': Math.max(12, baseSize/3), 'pointer-events': 'none', fill: '#9be7ff' });
+    // choose label text and color
     if (cell.revealed) {
-      if (cell.mine) label.textContent = '💣';
-      else if (cell.count > 0) label.textContent = String(cell.count);
+      if (cell.mine) {
+        label.textContent = '💣';
+        label.setAttribute('fill', '#fff');
+      } else if (cell.count > 0) {
+        label.textContent = String(cell.count);
+        label.setAttribute('fill', NUMBER_COLORS[cell.count] || '#9be7ff');
+      } else {
+        label.textContent = '';
+        label.setAttribute('fill', '#9be7ff');
+      }
     } else if (cell.flagged) {
       label.textContent = '🚩';
+      label.setAttribute('fill', '#ffb86b');
+    } else {
+      label.textContent = '';
+      label.setAttribute('fill', '#9be7ff');
     }
 
     poly.addEventListener('click', ()=> {
@@ -483,15 +513,23 @@ function renderTableBoard() {
         if (cell.mine){
           td.classList.add('mine');
           td.textContent = '💣';
+          td.style.color = '#fff';
         } else {
-          td.textContent = cell.count > 0 ? String(cell.count) : '';
-          td.style.color = cell.count === 1 ? '#9be7ff' : '#ffd27a';
+          if (cell.count > 0) {
+            td.textContent = String(cell.count);
+            td.style.color = NUMBER_COLORS[cell.count] || '#9be7ff';
+          } else {
+            td.textContent = '';
+            td.style.color = '';
+          }
         }
       } else if (cell.flagged) {
         td.classList.add('flagged');
         td.textContent = '🚩';
+        td.style.color = '#ffb86b';
       } else {
         td.textContent = '';
+        td.style.color = '';
       }
 
       td.addEventListener('click', ()=> {
