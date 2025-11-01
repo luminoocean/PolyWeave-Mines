@@ -126,7 +126,6 @@
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
     if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
 
-    // Helper to bind range <-> text field
     function bindRangeToInput(rangeEl, inputEl){
       if (!rangeEl || !inputEl) return;
       rangeEl.addEventListener('input', ()=> { inputEl.value = Number(rangeEl.value).toFixed(2); if (typeof window.renderTiledBoard === 'function') window.renderTiledBoard(); });
@@ -161,7 +160,6 @@
     document.addEventListener('keydown', (e)=> { if (e.key === 'Escape') closeModal(); });
 
     document.addEventListener('DOMContentLoaded', ()=> {
-      // sync initial display values
       if (zoomSlider && zoomValue) zoomValue.value = Number(zoomSlider.value).toFixed(2);
       if (xGapSlider && xGapValue) xGapValue.value = Number(xGapSlider.value).toFixed(2);
       if (yGapSlider && yGapValue) yGapValue.value = Number(yGapSlider.value).toFixed(2);
