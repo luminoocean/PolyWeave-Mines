@@ -143,11 +143,10 @@
     if (gapSlider && gapValue) gapSlider.addEventListener('input', e=> gapValue.textContent = Number(e.target.value).toFixed(2));
 
     if (applyBtn) applyBtn.addEventListener('click', ()=>{
-      // apply size to rows/cols inputs
       const size = Number(sizeSlider.value);
       document.getElementById('msRows').value = size;
       document.getElementById('msCols').value = size;
-      // modal stays out of app.js scope, but inputs used by app.js are present
+      // tri shrink and gap values are read directly by app.js on render
       closeModal();
       try { if (typeof window.startNewGame === 'function') window.startNewGame(); } catch(e){ console.warn(e); }
     });
