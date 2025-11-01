@@ -50,55 +50,37 @@
   <div id="msSettingsModal" class="ms-modal" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="ms-modal-panel" role="document">
       <header class="ms-modal-header">
-        <h3>Game settings</h3>
+        <h3>Display settings</h3>
         <button id="msSettingsClose" class="ms-close" aria-label="Close settings">✕</button>
       </header>
 
       <section class="ms-modal-body">
         <div class="ms-row">
-          <label for="sizeSlider">Minefield size (rows & cols)</label>
-          <input id="sizeSlider" type="range" min="6" max="36" value="9">
-          <span id="sizeValue">9</span>
+          <label for="zoomSlider">Zoom</label>
+          <input id="zoomSlider" type="range" min="0.5" max="2.0" step="0.01" value="1">
+          <span id="zoomValue">1.00</span>
         </div>
 
         <div class="ms-row">
-          <label><input type="checkbox" id="optShowTriShrink"> Enable triangle shrink slider</label>
-        </div>
-
-        <div class="ms-row" id="triShrinkRow" hidden>
-          <label for="triShrinkSlider">Triangle shrink (px)</label>
-          <input id="triShrinkSlider" type="range" min="0" max="20" value="0">
-          <span id="triShrinkValue">0</span>
-        </div>
-
-        <div class="ms-row">
-          <label><input type="checkbox" id="optShowGapScale"> Enable horizontal gap scale</label>
-        </div>
-
-        <div class="ms-row" id="gapScaleRow" hidden>
-          <label for="xGapSlider">Horizontal stretch (gap X)</label>
-          <input id="xGapSlider" type="range" min="0.6" max="2.0" step="0.01" value="1">
+          <label for="xGapSlider">Horizontal gap</label>
+          <input id="xGapSlider" type="range" min="0.5" max="2.0" step="0.01" value="1">
           <span id="xGapValue">1.00</span>
         </div>
 
         <div class="ms-row">
-          <label for="yGapSlider">Vertical stretch (gap Y)</label>
-          <input id="yGapSlider" type="range" min="0.6" max="2.0" step="0.01" value="1">
+          <label for="yGapSlider">Vertical gap</label>
+          <input id="yGapSlider" type="range" min="0.5" max="2.0" step="0.01" value="1">
           <span id="yGapValue">1.00</span>
         </div>
 
         <div class="ms-row">
-          <label for="dilationSlider">Dilation (zoom)</label>
-          <input id="dilationSlider" type="range" min="0.5" max="2.0" step="0.01" value="1">
-          <span id="dilationValue">1.00</span>
+          <label for="lightMode">Light mode</label>
+          <input id="lightMode" type="checkbox" />
         </div>
 
         <div class="ms-row">
-          <label><input type="checkbox" id="optShowExtra"> Show developer controls</label>
-        </div>
-
-        <div class="ms-row" id="devControlsRow" hidden>
-          <label><input id="msDebugCheckbox" type="checkbox"> Show debug overlay (coords)</label>
+          <label for="debugToggle">Show debug overlay</label>
+          <input id="debugToggle" type="checkbox" />
         </div>
       </section>
 
@@ -119,28 +101,14 @@
     const applyBtn = document.getElementById('msSettingsApply');
     const cancelBtn = document.getElementById('msSettingsCancel');
 
-    const sizeSlider = document.getElementById('sizeSlider');
-    const sizeValue = document.getElementById('sizeValue');
-
-    const optTri = document.getElementById('optShowTriShrink');
-    const triRow = document.getElementById('triShrinkRow');
-    const triSlider = document.getElementById('triShrinkSlider');
-    const triValue = document.getElementById('triShrinkValue');
-
-    const optGap = document.getElementById('optShowGapScale');
-    const gapRow = document.getElementById('gapScaleRow');
-    const gapSlider = document.getElementById('xGapSlider');
-    const gapValue = document.getElementById('xGapValue');
-
+    const zoomSlider = document.getElementById('zoomSlider');
+    const zoomValue = document.getElementById('zoomValue');
+    const xGapSlider = document.getElementById('xGapSlider');
+    const xGapValue = document.getElementById('xGapValue');
     const yGapSlider = document.getElementById('yGapSlider');
     const yGapValue = document.getElementById('yGapValue');
-
-    const dilationSlider = document.getElementById('dilationSlider');
-    const dilationValue = document.getElementById('dilationValue');
-
-    const optExtra = document.getElementById('optShowExtra');
-    const devRow = document.getElementById('devControlsRow');
-    const debugCheckbox = document.getElementById('msDebugCheckbox');
+    const lightBox = document.getElementById('lightMode');
+    const debugBox = document.getElementById('debugToggle');
 
     function openModal(){ modal.setAttribute('aria-hidden','false'); modal.style.display='grid'; }
     function closeModal(){ modal.setAttribute('aria-hidden','true'); modal.style.display='none'; }
@@ -149,25 +117,14 @@
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
     if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
 
-    if (optTri) optTri.addEventListener('change', ()=> triRow.hidden = !optTri.checked);
-    if (optGap) optGap.addEventListener('change', ()=> gapRow.hidden = !optGap.checked);
-    if (optExtra) optExtra.addEventListener('change', ()=> devRow.hidden = !optExtra.checked);
-
-    if (sizeSlider && sizeValue) {
-      sizeValue.textContent = sizeSlider.value;
-      sizeSlider.addEventListener('input', e => sizeValue.textContent = e.target.value);
-    }
-    if (triSlider && triValue) triSlider.addEventListener('input', e=> triValue.textContent = e.target.value);
-    if (gapSlider && gapValue) gapSlider.addEventListener('input', e=> gapValue.textContent = Number(e.target.value).toFixed(2));
-    if (yGapSlider && yGapValue) yGapSlider.addEventListener('input', e=> yGapValue.textContent = Number(e.target.value).toFixed(2));
-    if (dilationSlider && dilationValue) dilationSlider.addEventListener('input', e=> dilationValue.textContent = Number(e.target.value).toFixed(2));
+    if (zoomSlider && zoomValue){ zoomValue.textContent = zoomSlider.value; zoomSlider.addEventListener('input', e=> zoomValue.textContent = Number(e.target.value).toFixed(2)); }
+    if (xGapSlider && xGapValue){ xGapValue.textContent = xGapSlider.value; xGapSlider.addEventListener('input', e=> xGapValue.textContent = Number(e.target.value).toFixed(2)); }
+    if (yGapSlider && yGapValue){ yGapValue.textContent = yGapSlider.value; yGapSlider.addEventListener('input', e=> yGapValue.textContent = Number(e.target.value).toFixed(2)); }
+    if (lightBox) lightBox.addEventListener('change', ()=> document.body.classList.toggle('light-mode', lightBox.checked));
 
     if (applyBtn) applyBtn.addEventListener('click', ()=>{
-      const size = Number(sizeSlider.value);
-      document.getElementById('msRows').value = size;
-      document.getElementById('msCols').value = size;
       closeModal();
-      try { if (typeof window.startNewGame === 'function') window.startNewGame(); } catch(e){ console.warn(e); }
+      try { if (typeof window.renderTiledBoard === 'function') window.renderTiledBoard(); } catch(e){ console.warn(e); }
     });
 
     // accessibility
