@@ -6,7 +6,7 @@
   <title>PolyWeave Mines — Minesweeper</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-theme="dark-ocean">
   <div class="controls" role="region" aria-label="Game controls">
     <div class="control-group">
       <label for="msRows">Rows</label>
@@ -71,7 +71,7 @@
 
         <div class="ms-row">
           <label for="zoomSlider">Zoom</label>
-          <input id="zoomSlider" type="range" min="0.001" max="10" step="0.001" value="1">
+          <input id="zoomSlider" type="range" min="0.1" max="2.0" step="0.01" value="1">
           <input id="zoomValue" class="value-input" type="text" inputmode="decimal" value="1.00" />
         </div>
 
@@ -126,31 +126,23 @@
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
     if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
 
-    // slider -> input
-    function bindRangeToInput(rangeEl, inputEl, transformRangeValToActual = v=>v, transformActualToRangeVal = v=>v){
+    // Helper to bind range <-> text field
+    function bindRangeToInput(rangeEl, inputEl){
       if (!rangeEl || !inputEl) return;
-      rangeEl.addEventListener('input', ()=> {
-        const raw = Number(rangeEl.value);
-        const actual = transformRangeValToActual(raw);
-        inputEl.value = Number(actual).toFixed(2);
-      });
-      inputEl.addEventListener('keydown', (e)=> {
-        if (e.key === 'Enter') { inputEl.blur(); e.preventDefault(); }
-      });
+      rangeEl.addEventListener('input', ()=> { inputEl.value = Number(rangeEl.value).toFixed(2); if (typeof window.renderTiledBoard === 'function') window.renderTiledBoard(); });
+      inputEl.addEventListener('keydown', (e)=> { if (e.key === 'Enter') { inputEl.blur(); e.preventDefault(); } });
       inputEl.addEventListener('blur', ()=> {
         let v = Number(inputEl.value);
-        if (Number.isNaN(v)) v = transformRangeValToActual(Number(rangeEl.value));
-        const newRangeVal = transformActualToRangeVal(v);
-        rangeEl.value = newRangeVal;
-        inputEl.value = Number(transformRangeValToActual(Number(rangeEl.value))).toFixed(2);
+        if (Number.isNaN(v) || v <= 0) v = Number(rangeEl.value);
+        rangeEl.value = v;
+        inputEl.value = Number(rangeEl.value).toFixed(2);
+        if (typeof window.renderTiledBoard === 'function') window.renderTiledBoard();
       });
     }
 
-    // zoom slider multiplies slider value by a multiplier to make zoom more dramatic
-    const ZOOM_MULTIPLIER = 3.0;
-    bindRangeToInput(zoomSlider, zoomValue, (r)=> r * ZOOM_MULTIPLIER, (a)=> a / ZOOM_MULTIPLIER);
-    bindRangeToInput(xGapSlider, xGapValue, (r)=> r, (a)=> a);
-    bindRangeToInput(yGapSlider, yGapValue, (r)=> r, (a)=> a);
+    bindRangeToInput(zoomSlider, zoomValue);
+    bindRangeToInput(xGapSlider, xGapValue);
+    bindRangeToInput(yGapSlider, yGapValue);
 
     if (themeSelect) themeSelect.addEventListener('change', ()=> {
       document.body.setAttribute('data-theme', themeSelect.value || 'dark-ocean');
@@ -166,11 +158,11 @@
       try { if (typeof window.renderTiledBoard === 'function') window.renderTiledBoard(); } catch(e){ console.warn(e); }
     });
 
-    // accessibility
     document.addEventListener('keydown', (e)=> { if (e.key === 'Escape') closeModal(); });
-    // initial input sync
+
     document.addEventListener('DOMContentLoaded', ()=> {
-      if (zoomSlider && zoomValue) zoomValue.value = (Number(zoomSlider.value) * ZOOM_MULTIPLIER).toFixed(2);
+      // sync initial display values
+      if (zoomSlider && zoomValue) zoomValue.value = Number(zoomSlider.value).toFixed(2);
       if (xGapSlider && xGapValue) xGapValue.value = Number(xGapSlider.value).toFixed(2);
       if (yGapSlider && yGapValue) yGapValue.value = Number(yGapSlider.value).toFixed(2);
     });
