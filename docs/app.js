@@ -98,7 +98,7 @@ function placeMines(grid, mineCount, tilingKey, adjacencyKey, safeCell = null){
   grid.mines = placed;
   computeCountsWithAdjacency(grid, tilingKey, adjacencyKey);
 }
-
+function computeSquarePolygon(cx,cy,size){ const s=size/2; return [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]]; }
 /* ---------- reveal / flag ---------- */
 function revealCell(grid,r,c,tilingKey,adjacencyKey){
   const { rows, cols, cells } = grid;
