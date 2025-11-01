@@ -324,25 +324,31 @@ function squareCenter(rows, cols, size) {
   return {centers, w: cols * size + 16, h: rows * size + 16};
 }
 
-// triangle centers arranged for exact equilateral tiling (alternating up/down)
+// Replace existing triangleCenter with this corrected version
 function triangleCenter(rows, cols, s) {
-  const h = Math.sqrt(3)/2 * s;
-  // exact triangular lattice basis: x step s/2, y step h/2
-  const xStep = s / 2;
-  const yStep = h / 2;
+  const h = Math.sqrt(3) / 2 * s;   // equilateral triangle height
+  const xStep = s / 2;              // half-side horizontal step
+  const yStep = (2/3) * h;          // correct centroid vertical step (prevents apex/base overlap)
   const centers = [];
   const PAD = 8;
-  for (let r=0;r<rows;r++){
-    for (let c=0;c<cols;c++){
-      const x = c * xStep + s/2 + PAD;
-      const y = r * yStep + h/2 + PAD;
-      centers.push({r,c,x,y});
+
+  // we position so first centroid sits with its centroid offset by h/3 from top of its triangle
+  // using base formulas that match computeTrianglePolygon centroid math
+  const y0 = PAD + h / 3;           // top-most centroid y offset
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c * xStep + s / 2 + PAD;
+      const y = r * yStep + y0;
+      centers.push({ r, c, x, y });
     }
   }
-  const w = (cols - 1) * xStep + s + PAD*2;
-  const H = (rows - 1) * yStep + h + PAD*2;
-  return {centers, w, h: H};
+
+  const w = (cols - 1) * xStep + s + PAD * 2;
+  const H = (rows - 1) * yStep + h + PAD * 2;
+  return { centers, w, h: H };
 }
+
 
 // --- UI and state ---
 let gameGrid = null;
