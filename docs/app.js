@@ -679,3 +679,6 @@ if (document.readyState === 'loading') {
 } else {
   initOnceDomReady();
 }
+setTimeout(() => {
+    initOnceDomReady();
+}, 100);
