@@ -1,5 +1,5 @@
-// docs/app.js — Fixed full Minesweeper app with Tiling + Adjacency and correct SVG rendering
-// Replace your existing docs/app.js with this file exactly.
+// docs/app.js — Full Minesweeper app with Tiling + Adjacency and SVG tile rendering
+// This version uses spacing tweaks so tiles don't touch. Replace your docs/app.js with this file exactly.
 // Expects controls in docs/index.html with IDs:
 // msRows, msCols, msMines, tilingSelect, adjacencySelect, applyAdjacency, newGame, msStatus, appRoot
 
@@ -63,12 +63,11 @@ function triangleOffsetsForCell(r, c, adjKey) {
   const up = triangleOrientation(r, c);
   if (adjKey === 'tri-edge') {
     // edge-sharing adjacency: three neighbors
-    // these offsets correspond to the center-grid packing used by triangleCenter()
     return up ? [[0,-1],[1,0],[0,1]]   // left, down-right, right
               : [[0,-1],[-1,0],[0,1]]; // left, up-left, right
   }
   if (adjKey === 'tri-edge+v') {
-    // edges + vertex-sharing neighbors (6); pattern chosen to approximate local connectivity
+    // edges + vertex-sharing neighbors (6)
     return up ? [[0,-1],[-1,0],[1,0],[0,1],[-1,1],[1,-1]]
               : [[0,-1],[-1,0],[1,0],[0,1],[-1,-1],[1,1]];
   }
@@ -92,7 +91,7 @@ function createGrid(rows, cols, mines=0){
 function computeCountsWithAdjacency(grid, tilingKey, adjacencyKey){
   const { rows, cols, cells } = grid;
   if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) {
-    // per-cell offsets
+    // per-cell offsets for triangles
     for (let r=0;r<rows;r++){
       for (let c=0;c<cols;c++){
         const i = idx(rows,cols,r,c);
@@ -287,50 +286,55 @@ function computeTrianglePolygon(cx, cy, s, upward=true) {
   }
 }
 
-// hex grid centers using pointy-top odd-r offset layout
+// hex grid centers using pointy-top odd-r offset layout with GAP
 function hexCenter(rows, cols, radius) {
+  const GAP = 1.04; // spacing multiplier >1 spreads hexes slightly apart
   const hexWidth = 2 * radius;
   const hexHeight = Math.sqrt(3) * radius;
-  const xStep = 0.75 * hexWidth;
-  const yStep = hexHeight;
+  const xStep = 0.75 * hexWidth * GAP;
+  const yStep = hexHeight * GAP;
   const centers = [];
+  const PAD = 8;
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
-      const x = c * xStep + radius + 6;
-      const y = r * yStep + ((c & 1) ? hexHeight / 2 : 0) + radius + 6;
+      const x = c * xStep + radius + PAD;
+      const y = r * yStep + ((c & 1) ? hexHeight / 2 * GAP : 0) + radius + PAD;
       centers.push({r,c,x,y});
     }
   }
-  const w = (cols - 1) * xStep + hexWidth + 12;
-  const h = (rows - 1) * yStep + hexHeight + hexHeight/2 + 12;
+  const w = (cols - 1) * xStep + hexWidth + PAD*2;
+  const h = (rows - 1) * yStep + hexHeight + hexHeight/2 + PAD*2;
   return {centers, w, h};
 }
 
 function squareCenter(rows, cols, size) {
+  const PAD = 8;
   const centers = [];
   for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){
-    const x = c * size + size/2 + 6;
-    const y = r * size + size/2 + 6;
+    const x = c * size + size/2 + PAD;
+    const y = r * size + size/2 + PAD;
     centers.push({r,c,x,y});
   }
-  return {centers, w: cols * size + 12, h: rows * size + 12};
+  return {centers, w: cols * size + 16, h: rows * size + 16};
 }
 
-// triangle centers arranged for exact equilateral tiling (alternating up/down)
+// triangle centers arranged for exact equilateral tiling (alternating up/down) with GAP
 function triangleCenter(rows, cols, s) {
+  const GAP = 1.03;
   const h = Math.sqrt(3)/2 * s;
   const centers = [];
-  const xStep = s * 0.5;
-  const yStep = h * 0.5;
+  const xStep = s * 0.5 * GAP;
+  const yStep = h * 0.5 * GAP;
+  const PAD = 8;
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
-      const x = c * xStep + s/2 + 6;
-      const y = r * yStep + h/2 + 6;
+      const x = c * xStep + s/2 + PAD;
+      const y = r * yStep + h/2 + PAD;
       centers.push({r,c,x,y});
     }
   }
-  const w = (cols - 1) * xStep + s + 12;
-  const H = (rows - 1) * yStep + h + 12;
+  const w = (cols - 1) * xStep + s + PAD*2;
+  const H = (rows - 1) * yStep + h + PAD*2;
   return {centers, w, h: H};
 }
 
@@ -345,7 +349,13 @@ function renderTiledBoard() {
   appRoot.innerHTML = '';
   if (!gameGrid) return;
   const rows = gameGrid.rows, cols = gameGrid.cols;
-  const baseSize = Math.max(18, Math.min(48, Math.floor(720 / Math.max(8, cols))));
+
+  // choose base tile size and spacing
+  const requestedCols = Math.max(1, cols);
+  const rawBase = Math.floor(720 / Math.max(8, requestedCols));
+  const SPACING = 0.92; // <1 reduces polygon size so gaps appear
+  const baseSize = Math.max(14, Math.min(48, Math.floor(rawBase * SPACING)));
+
   let centersInfo;
   const tileType = currentTiling || 'square';
 
