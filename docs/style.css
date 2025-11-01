@@ -28,7 +28,7 @@ svg text{ font-weight:600; font-family:Inter, system-ui; font-size:12px; fill:va
 /* Modal */
 .ms-modal{ position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,0.5); z-index:1200; }
 .ms-modal[aria-hidden="false"]{ display:grid; }
-.ms-modal-panel{ width:420px; max-width:calc(100% - 40px); background:var(--panel); border-radius:10px; box-shadow:0 14px 40px rgba(0,0,0,0.6); padding:12px; color:var(--text); border:1px solid rgba(255,255,255,0.04); }
+.ms-modal-panel{ width:460px; max-width:calc(100% - 40px); background:var(--panel); border-radius:10px; box-shadow:0 14px 40px rgba(0,0,0,0.6); padding:12px; color:var(--text); border:1px solid rgba(255,255,255,0.04); }
 .ms-modal-header{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
 .ms-modal-header h3{ margin:0; font-size:16px; color:#e6fbff; }
 .ms-close{ background:transparent; border:0; color:var(--sub); cursor:pointer; font-size:16px; }
