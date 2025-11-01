@@ -596,6 +596,52 @@ function populateTilingControls(){
 
 function applyAdjacencyAction(){ const sel=document.getElementById('tilingSelect'); const adjSel=document.getElementById('adjacencySelect'); if (!sel||!adjSel) return; currentTiling = sel.value; currentAdjacency = adjSel.value; try{ window.currentTiling=currentTiling; window.currentAdjacency=currentAdjacency; }catch(e){}; if (gameGrid){ computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency); renderTiledBoard(); const ms=document.getElementById('msStatus'); if (ms) ms.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`; } else { const ms=document.getElementById('msStatus'); if (ms) ms.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`; } }
 function newGameAction(){ startNewGame(); }
+<script>
+(function(){
+  const openBtn = document.getElementById('msSettingsBtn');
+  const modal = document.getElementById('msSettingsModal');
+  const closeBtn = document.getElementById('msSettingsClose');
+  const applyBtn = document.getElementById('msSettingsApply');
+  const cancelBtn = document.getElementById('msSettingsCancel');
+
+  const optTri = document.getElementById('optShowTriShrink');
+  const triRow = document.getElementById('triShrinkRow');
+  const triSlider = document.getElementById('triShrinkSlider');
+  const triValue = document.getElementById('triShrinkValue');
+
+  const optGap = document.getElementById('optShowGapScale');
+  const gapRow = document.getElementById('gapScaleRow');
+  const gapSlider = document.getElementById('xGapSlider');
+  const gapValue = document.getElementById('xGapValue');
+
+  const optExtra = document.getElementById('optShowExtra');
+  const devRow = document.getElementById('devControlsRow');
+
+  function openModal(){ modal.setAttribute('aria-hidden','false'); modal.style.display='grid'; }
+  function closeModal(){ modal.setAttribute('aria-hidden','true'); modal.style.display='none'; }
+
+  if (openBtn) openBtn.addEventListener('click', openModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+
+  if (optTri) optTri.addEventListener('change', ()=> triRow.hidden = !optTri.checked);
+  if (optGap) optGap.addEventListener('change', ()=> gapRow.hidden = !optGap.checked);
+  if (optExtra) optExtra.addEventListener('change', ()=> devRow.hidden = !optExtra.checked);
+
+  if (triSlider && triValue) triSlider.addEventListener('input', e=> triValue.textContent = e.target.value);
+  if (gapSlider && gapValue) gapSlider.addEventListener('input', e=> gapValue.textContent = Number(e.target.value).toFixed(1));
+
+  if (applyBtn) applyBtn.addEventListener('click', ()=>{
+    // settings are already bound to the inputs used by app.js (triShrinkSlider, xGapSlider)
+    closeModal();
+    // re-render to pick up changes immediately
+    try { if (typeof renderTiledBoard === 'function') renderTiledBoard(); } catch(e){ console.warn('render failed', e); }
+  });
+
+  // accessibility: close on escape
+  document.addEventListener('keydown', (e)=> { if (e.key === 'Escape') closeModal(); });
+})();
+</script>
 
 // --- Init and slider wiring ---
 function initOnceDomReady(){
