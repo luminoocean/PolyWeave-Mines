@@ -26,7 +26,7 @@ const TILINGS = {
     }
   },
 
-  // Hex tiling (approximated with even-r offsets)
+  // Hex tiling (approximated with odd-r pointy-top offsets)
   "hex": {
     label: "Hexagon",
     adjacencies: {
@@ -55,7 +55,6 @@ if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !tilingSelect |
 // --- Helpers ---
 function idx(rows, cols, r, c){ return r*cols + c; }
 function inBounds(rows, cols, r, c){ return r>=0 && r<rows && c>=0 && c<cols; }
-function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
 
 // return offsets[] for tiling+adjacency
 function getOffsetsFor(tilingKey, adjacencyKey) {
@@ -200,6 +199,7 @@ function computeSquarePolygon(cx, cy, size) {
   const s = size/2;
   return [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]];
 }
+// precise hex polygon (pointy-top)
 function computeHexPolygon(cx, cy, radius) {
   const pts = [];
   for (let k=0;k<6;k++){
@@ -217,19 +217,23 @@ function computeTrianglePolygon(cx, cy, size, upward=true) {
   }
 }
 
+// hex grid centers using pointy-top odd-r offset layout
 function hexCenter(rows, cols, radius) {
-  const h = Math.sqrt(3) * radius;
+  const hexWidth = 2 * radius;
+  const hexHeight = Math.sqrt(3) * radius;
+  const xStep = 0.75 * hexWidth;
+  const yStep = hexHeight;
   const centers = [];
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
-      const x = c * (radius * 1.5) + radius + 6;
-      const y = r * (h) + ((c % 2) ? h/2 : 0) + 6;
+      const x = c * xStep + radius + 6;
+      const y = r * yStep + ((c & 1) ? hexHeight / 2 : 0) + radius + 6;
       centers.push({r,c,x,y});
     }
   }
-  const w = cols * radius * 1.5 + radius + 12;
-  const H = rows * h + 12;
-  return {centers, w, h: H};
+  const w = (cols - 1) * xStep + hexWidth + 12;
+  const h = (rows - 1) * yStep + hexHeight + hexHeight/2 + 12;
+  return {centers, w, h};
 }
 
 function squareCenter(rows, cols, size) {
@@ -242,17 +246,20 @@ function squareCenter(rows, cols, size) {
   return {centers, w: cols * size + 12, h: rows * size + 12};
 }
 
+// triangle centers arranged for equilateral tiling (alternating up/down)
 function triangleCenter(rows, cols, size) {
-  const centers = [];
   const h = Math.sqrt(3)/2 * size;
+  const centers = [];
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
-      const x = c * (size * 0.75) + size/2 + 6;
-      const y = r * (h) + ((c % 2) ? h/2 : 0) + 6;
+      const x = c * (size * 0.5) + size/2 + 6;
+      const y = r * h + ((c & 1) ? h/2 : 0) + h/2 + 6;
       centers.push({r,c,x,y});
     }
   }
-  return {centers, w: cols * size * 0.75 + size, h: rows * h + size};
+  const w = (cols - 1) * (size * 0.5) + size + 12;
+  const H = (rows - 1) * h + h + 12;
+  return {centers, w, h: H};
 }
 
 // --- UI and state ---
@@ -260,13 +267,15 @@ let gameGrid = null;
 let running = false;
 let firstClick = true;
 
+// tile/adjacency state (initialized later)
+let currentTiling = null;
+let currentAdjacency = null;
+
 function renderTiledBoard() {
   appRoot.innerHTML = '';
   if (!gameGrid) return;
   const rows = gameGrid.rows, cols = gameGrid.cols;
 
-  // tile sizing heuristics
-  const maxWidth = Math.min(980, Math.max(320, cols * 40));
   const baseSize = Math.max(18, Math.min(48, Math.floor(720 / Math.max(8, cols))));
   let centersInfo;
   const tileType = currentTiling || 'square';
@@ -365,7 +374,7 @@ function renderTiledBoard() {
   appRoot.appendChild(svg);
 }
 
-// --- Legacy table renderer (fallback for square if you prefer) ---
+// --- Legacy table renderer (fallback for square) ---
 function renderTableBoard() {
   appRoot.innerHTML = '';
   if (!gameGrid) return;
@@ -457,9 +466,6 @@ function renderTableBoard() {
 }
 
 // --- Game control and wiring ---
-let currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
-let currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
-
 function startNewGame(auto = false){
   const rows = Math.max(3, Number(msRows.value || 9));
   const cols = Math.max(3, Number(msCols.value || 9));
@@ -470,6 +476,10 @@ function startNewGame(auto = false){
   firstClick = true;
   msStatus.textContent = 'Ready — first click is safe';
   // render according to tiling
+  if (!currentTiling) {
+    currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
+    currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
+  }
   if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
 }
 
@@ -537,7 +547,7 @@ if (document.readyState === 'loading') {
   populateTilingControls();
 }
 
-// initialize state
+// initialize state and start
 currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
 currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
 startNewGame();
