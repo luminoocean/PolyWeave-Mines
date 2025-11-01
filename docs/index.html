@@ -146,7 +146,6 @@
       const size = Number(sizeSlider.value);
       document.getElementById('msRows').value = size;
       document.getElementById('msCols').value = size;
-      // tri shrink and gap values are read directly by app.js on render
       closeModal();
       try { if (typeof window.startNewGame === 'function') window.startNewGame(); } catch(e){ console.warn(e); }
     });
