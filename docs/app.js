@@ -1,61 +1,41 @@
-// docs/app.js — Minesweeper with Tiling + Adjacency (tiling => adjacency presets)
-// Tiling = type of tile/tiling topology; Adjacency = neighbor rule applied on that topology.
+// docs/app.js — Minesweeper with Tiling + Adjacency presets
+// Self-contained; expects controls in docs/index.html with IDs:
+// msRows, msCols, msMines, tilingSelect, adjacencySelect, applyAdjacency, newGame, msStatus, appRoot
 
+// --- TILINGS + adjacency presets (tilings that repeat infinitely) ---
 const TILINGS = {
-  // Square tiling: standard rectangular grid of square tiles
+  // Square tiling
   "square": {
-    label: "Square grid",
-    // adjacency presets available for square tiling
+    label: "Square",
     adjacencies: {
-      "square-8": { label: "Square 8 (standard)", offsets: [
-        [-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]
-      ]},
-      "von-neumann": { label: "Von Neumann (4)", offsets: [
-        [-1,0],[1,0],[0,-1],[0,1]
-      ]},
-      "knight": { label: "Knight moves", offsets: [
-        [-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]
-      ]},
-      "square-radius2": { label: "Square radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() }
+      "square-8":  { label: "Square 8 (all 8)", offsets: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] },
+      "von-neumann":{ label: "Von Neumann (4)", offsets: [[-1,0],[1,0],[0,-1],[0,1]] },
+      "knight":     { label: "Knight moves", offsets: [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]] },
+      "square-r2":  { label: "Square radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() }
     }
   },
 
-  // Triangle tiling: triangular grid (we represent triangle coordinates as (r,c) with alternating orientation)
-  // Offsets below are given as row/col deltas assuming row-major indexed triangles where neighbors depend on orientation.
+  // Triangle tiling (regular triangular lattice approximated on row/col)
   "triangle": {
-    label: "Triangular grid",
+    label: "Triangle",
     adjacencies: {
-      "tri-3": { label: "Triangle 3 (shared edges)", offsets: [
-        // for triangles we will treat adjacency offsets symmetrically so flood/count works on cell coords;
-        // these offsets are approximations for a staggered triangle tiling
-        [-1,0],[0,-1],[0,1]
-      ]},
-      "tri-6": { label: "Triangle 6 (edges+vertices)", offsets: [
-        [-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0]
-      ]},
-      "tri-12": { label: "Triangle radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() }
+      "tri-edge": { label: "Triangle edge neighbors (3)", offsets: [[-1,0],[0,-1],[0,1]] },
+      "tri-edge+v": { label: "Triangle edges+vertices (6)", offsets: [[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0]] },
+      "tri-r2": { label: "Triangle radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() }
     }
   },
 
-  // Hex tiling: approximated using axial offsets mapped to row/col indices (we use even-r offset approximation)
+  // Hex tiling (approximated with even-r offsets)
   "hex": {
-    label: "Hexagonal grid",
+    label: "Hexagon",
     adjacencies: {
-      "hex-6": { label: "Hex 6 (standard)", offsets: [
-        // even-r horizontal layout neighbor offsets (approx)
-        [-1,0],[-1,1],[0,-1],[0,1],[1,0],[1,1]
-      ]},
-      "hex-radius2": { label: "Hex radius 2", offsets: (function(){
-        // generate radius-2 axial neighbors (approx as rectangular offsets)
-        const o=[];
-        for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]);
-        return o;
-      })() }
+      "hex-6": { label: "Hex 6 (standard)", offsets: [[-1,0],[-1,1],[0,-1],[0,1],[1,0],[1,1]] },
+      "hex-r2": { label: "Hex radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() }
     }
   }
 };
 
-// UI element refs (IDs must match docs/index.html)
+// --- DOM refs (must match docs/index.html) ---
 const appRoot = document.getElementById('appRoot');
 const msRows = document.getElementById('msRows');
 const msCols = document.getElementById('msCols');
@@ -68,70 +48,25 @@ const adjacencySelect = document.getElementById('adjacencySelect');
 const applyAdjacencyBtn = document.getElementById('applyAdjacency');
 
 if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !tilingSelect || !adjacencySelect || !applyAdjacencyBtn || !msStatus) {
-  console.error('Missing expected DOM controls; check docs/index.html IDs.');
+  console.error('Missing expected DOM controls. Ensure docs/index.html contains the control elements with correct IDs.');
 }
 
-// Populate tiling and adjacency controls
-function populateTilingControls() {
-  tilingSelect.innerHTML = '';
-  for (const key of Object.keys(TILINGS)) {
-    const opt = document.createElement('option');
-    opt.value = key;
-    opt.textContent = TILINGS[key].label;
-    tilingSelect.appendChild(opt);
-  }
-}
-function populateAdjacencyForTiling(tilingKey) {
-  adjacencySelect.innerHTML = '';
-  const adj = TILINGS[tilingKey].adjacencies;
-  for (const key of Object.keys(adj)) {
-    const opt = document.createElement('option');
-    opt.value = key;
-    opt.textContent = adj[key].label;
-    adjacencySelect.appendChild(opt);
-  }
-}
-
-// initial population
-populateTilingControls();
-tilingSelect.value = Object.keys(TILINGS)[0];
-populateAdjacencyForTiling(tilingSelect.value);
-adjacencySelect.value = Object.keys(TILINGS[tilingSelect.value].adjacencies)[0];
-
-let currentTiling = tilingSelect.value;
-let currentAdjacency = adjacencySelect.value;
-
-// keep adjacency updated when tiling changes
-tilingSelect.addEventListener('change', () => {
-  currentTiling = tilingSelect.value;
-  populateAdjacencyForTiling(currentTiling);
-  // pick the first adjacency option for the new tiling
-  adjacencySelect.value = Object.keys(TILINGS[currentTiling].adjacencies)[0];
-  currentAdjacency = adjacencySelect.value;
-  msStatus.textContent = `Tiling set to ${TILINGS[currentTiling].label}; choose adjacency`;
-});
-
-// when adjacency chosen
-adjacencySelect.addEventListener('change', () => {
-  currentAdjacency = adjacencySelect.value;
-});
-
-// Accurate neighbor offsets getter — returns an array of [dr,dc] for the current tiling+adjacency
-function getOffsetsForCurrent() {
-  const adjObj = TILINGS[currentTiling].adjacencies[currentAdjacency];
-  return adjObj && adjObj.offsets ? adjObj.offsets : [];
-}
-
-// Grid functions (we still store grid as row/col array; the offsets are applied onto that grid)
+// --- Helpers ---
 function idx(rows, cols, r, c){ return r*cols + c; }
 function inBounds(rows, cols, r, c){ return r>=0 && r<rows && c>=0 && c<cols; }
 
+// return offsets[] for current tiling+adjacency
+function getOffsetsFor(tilingKey, adjacencyKey) {
+  return (TILINGS[tilingKey] && TILINGS[tilingKey].adjacencies[adjacencyKey] && TILINGS[tilingKey].adjacencies[adjacencyKey].offsets) || [];
+}
+
+// --- Grid API ---
 function createGrid(rows, cols, mines=0){
   return { rows, cols, mines, cells: Array(rows*cols).fill(0).map(()=>({ mine:false, revealed:false, flagged:false, count:0 })) };
 }
 
-function computeCountsWithCurrentAdjacency(grid){
-  const offsets = getOffsetsForCurrent();
+function computeCountsWithAdjacency(grid, tilingKey, adjacencyKey){
+  const offsets = getOffsetsFor(tilingKey, adjacencyKey);
   const { rows, cols, cells } = grid;
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
@@ -148,9 +83,9 @@ function computeCountsWithCurrentAdjacency(grid){
   }
 }
 
-function placeMines(grid, mineCount, safeCell = null){
+function placeMines(grid, mineCount, tilingKey, adjacencyKey, safeCell = null){
   const { rows, cols, cells } = grid;
-  // reset
+  // reset cell states (but keep revealed/flagged cleared)
   cells.forEach(cell => { cell.mine = false; cell.count = 0; cell.revealed = false; cell.flagged = false; });
   const total = rows * cols;
   const perm = Array.from({ length: total }, (_,i) => i);
@@ -162,8 +97,8 @@ function placeMines(grid, mineCount, safeCell = null){
   const forbidden = new Set();
   if (safeCell) {
     const [sr, sc] = safeCell;
-    const offsets = getOffsetsForCurrent();
-    // include the cell itself plus adjacency-protected neighbors
+    const offsets = getOffsetsFor(tilingKey, adjacencyKey);
+    // protect the clicked cell and its adjacency neighbors
     [[0,0]].concat(offsets).forEach(([dr,dc]) => {
       const rr = sr + dr, cc = sc + dc;
       if (!inBounds(rows,cols,rr,cc)) return;
@@ -180,10 +115,10 @@ function placeMines(grid, mineCount, safeCell = null){
     placed++;
   }
   grid.mines = placed;
-  computeCountsWithCurrentAdjacency(grid);
+  computeCountsWithAdjacency(grid, tilingKey, adjacencyKey);
 }
 
-function revealCell(grid, r, c){
+function revealCell(grid, r, c, tilingKey, adjacencyKey){
   const { rows, cols, cells } = grid;
   if (!inBounds(rows,cols,r,c)) return { changed: [], exploded: false };
   const iStart = idx(rows,cols,r,c);
@@ -193,7 +128,7 @@ function revealCell(grid, r, c){
 
   const changed = [];
   const stack = [[r,c]];
-  const offsets = getOffsetsForCurrent();
+  const offsets = getOffsetsFor(tilingKey, adjacencyKey);
 
   while (stack.length){
     const [rr,cc] = stack.pop();
@@ -223,8 +158,8 @@ function toggleFlag(grid, r, c){
   return cell.flagged;
 }
 
-function countFlaggedNeighbors(grid, r, c){
-  const offsets = getOffsetsForCurrent();
+function countFlaggedNeighbors(grid, r, c, tilingKey, adjacencyKey){
+  const offsets = getOffsetsFor(tilingKey, adjacencyKey);
   let cnt = 0;
   for (const [dr,dc] of offsets){
     const rr = r + dr, cc = c + dc;
@@ -234,8 +169,8 @@ function countFlaggedNeighbors(grid, r, c){
   return cnt;
 }
 
-function revealUnflaggedNeighbors(grid, r, c){
-  const offsets = getOffsetsForCurrent();
+function revealUnflaggedNeighbors(grid, r, c, tilingKey, adjacencyKey){
+  const offsets = getOffsetsFor(tilingKey, adjacencyKey);
   const toReveal = [];
   for (const [dr,dc] of offsets){
     const rr = r + dr, cc = c + dc;
@@ -250,10 +185,12 @@ function checkWin(grid){
   return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed));
 }
 
-// UI state and rendering
+// --- UI and state ---
 let gameGrid = null;
 let running = false;
 let firstClick = true;
+let currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
+let currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
 
 function renderBoard(){
   appRoot.innerHTML = '';
@@ -284,19 +221,19 @@ function renderBoard(){
         td.textContent = '';
       }
 
-      // left-click behavior (including chord when clicking revealed number)
-      td.addEventListener('click', (e)=> {
+      // left-click handler: reveal OR chord when clicking a revealed number
+      td.addEventListener('click', ()=> {
         if (!running) return;
         const rr = Number(td.dataset.r), cc = Number(td.dataset.c);
         const cellNow = gameGrid.cells[idx(gameGrid.rows, gameGrid.cols, rr, cc)];
 
         if (cellNow.revealed && cellNow.count > 0) {
-          const flagged = countFlaggedNeighbors(gameGrid, rr, cc);
+          const flagged = countFlaggedNeighbors(gameGrid, rr, cc, currentTiling, currentAdjacency);
           if (flagged === cellNow.count) {
-            const toReveal = revealUnflaggedNeighbors(gameGrid, rr, cc);
+            const toReveal = revealUnflaggedNeighbors(gameGrid, rr, cc, currentTiling, currentAdjacency);
             let exploded = false;
             for (const [ar, ac] of toReveal) {
-              const res = revealCell(gameGrid, ar, ac);
+              const res = revealCell(gameGrid, ar, ac, currentTiling, currentAdjacency);
               if (res.exploded) exploded = true;
             }
             if (exploded) {
@@ -313,11 +250,12 @@ function renderBoard(){
           return;
         }
 
+        // normal reveal
         if (firstClick){
-          placeMines(gameGrid, Number(msMines.value), [rr,cc]);
+          placeMines(gameGrid, Number(msMines.value), currentTiling, currentAdjacency, [rr,cc]);
           firstClick = false;
         }
-        const res = revealCell(gameGrid, rr, cc);
+        const res = revealCell(gameGrid, rr, cc, currentTiling, currentAdjacency);
         if (res.exploded){
           running = false;
           gameGrid.cells.forEach(cl => { if (cl.mine) cl.revealed = true; });
@@ -359,13 +297,52 @@ function startNewGame(auto = false){
   renderBoard();
 }
 
-// Wiring: tiling/adjacency apply and new game
+// --- UI population and wiring ---
+function populateTilingControls() {
+  // populate tiling select
+  tilingSelect.innerHTML = '';
+  for (const key of Object.keys(TILINGS)) {
+    const opt = document.createElement('option');
+    opt.value = key; opt.textContent = TILINGS[key].label;
+    tilingSelect.appendChild(opt);
+  }
+  // populate adjacency for current tiling
+  function populateAdj(tilingKey){
+    adjacencySelect.innerHTML = '';
+    const adj = TILINGS[tilingKey].adjacencies || {};
+    for (const aKey of Object.keys(adj)) {
+      const o = document.createElement('option');
+      o.value = aKey; o.textContent = adj[aKey].label;
+      adjacencySelect.appendChild(o);
+    }
+    if (adjacencySelect.options.length) adjacencySelect.selectedIndex = 0;
+  }
+
+  const initial = tilingSelect.value || Object.keys(TILINGS)[0];
+  populateAdj(initial);
+  currentTiling = initial;
+  currentAdjacency = adjacencySelect.value || adjacencySelect.options[0].value;
+
+  // update adjacency when tiling changes
+  tilingSelect.addEventListener('change', (e) => {
+    populateAdj(e.target.value);
+    currentTiling = e.target.value;
+    currentAdjacency = adjacencySelect.value;
+    msStatus.textContent = `Tiling: ${TILINGS[currentTiling].label} (Adjacency: ${TILINGS[currentTiling].adjacencies[currentAdjacency].label})`;
+  });
+
+  // update adjacency selection
+  adjacencySelect.addEventListener('change', ()=> {
+    currentAdjacency = adjacencySelect.value;
+  });
+}
+
+// apply adjacency button: recompute counts for current mines (preserve mine layout)
 applyAdjacencyBtn.addEventListener('click', ()=> {
   currentTiling = tilingSelect.value;
   currentAdjacency = adjacencySelect.value;
   if (gameGrid) {
-    // recompute counts for current mines using the new adjacency
-    computeCountsWithCurrentAdjacency(gameGrid);
+    computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
     renderBoard();
     msStatus.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
   } else {
@@ -373,33 +350,16 @@ applyAdjacencyBtn.addEventListener('click', ()=> {
   }
 });
 
-tilingSelect.addEventListener('change', ()=> {
-  // update adjacency options when tiling changes
-  populateAdjacencyForTiling(tilingSelect.value);
-  adjacencySelect.value = Object.keys(TILINGS[tilingSelect.value].adjacencies)[0];
-  currentTiling = tilingSelect.value;
-  currentAdjacency = adjacencySelect.value;
-  msStatus.textContent = `Tiling: ${TILINGS[currentTiling].label} (Adjacency set to ${TILINGS[currentTiling].adjacencies[currentAdjacency].label})`;
-});
-
 newGameBtn.addEventListener('click', ()=> startNewGame());
 
-// helper to expose adjacencies for dynamic UI population
-function populateAdjacencyForTiling(tilingKey) {
-  adjacencySelect.innerHTML = '';
-  const adj = TILINGS[tilingKey].adjacencies;
-  for (const key of Object.keys(adj)) {
-    const opt = document.createElement('option');
-    opt.value = key;
-    opt.textContent = adj[key].label;
-    adjacencySelect.appendChild(opt);
-  }
+// ensure control population after DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', populateTilingControls);
+} else {
+  populateTilingControls();
 }
 
-// initialize adjacency population properly for first load
-populateAdjacencyForTiling(tilingSelect.value);
-currentTiling = tilingSelect.value;
-currentAdjacency = adjacencySelect.value || adjacencySelect.options[0].value;
-
-// Start with a fresh game
+// initialize adjacency variables and start
+currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
+currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
 startNewGame();
