@@ -331,10 +331,6 @@ function renderTiledBoard(){
     return;
   }
 
-  // fallback square / hex (apply dilation + gap transforms via center transforms)
-  const gapX = Number((document.getElementById('xGapSlider')||{value:1}).value || 1);
-  const gapY = Number((document.getElementById('yGapSlider')||{value:1}).value || 1);
-  const dilation = Number((document.getElementById('dilationSlider')||{value:1}).value || 1);
 
   let centersInfo;
   if (currentTiling === 'hex') centersInfo = hexCenter(gameGrid.rows, gameGrid.cols, (baseSize/2) * dilation);
