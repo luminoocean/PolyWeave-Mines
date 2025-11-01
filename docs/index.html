@@ -76,9 +76,21 @@
         </div>
 
         <div class="ms-row" id="gapScaleRow" hidden>
-          <label for="xGapSlider">Horizontal gap scale</label>
-          <input id="xGapSlider" type="range" min="0.6" max="1.6" step="0.05" value="1">
+          <label for="xGapSlider">Horizontal stretch (gap X)</label>
+          <input id="xGapSlider" type="range" min="0.6" max="2.0" step="0.01" value="1">
           <span id="xGapValue">1.00</span>
+        </div>
+
+        <div class="ms-row">
+          <label for="yGapSlider">Vertical stretch (gap Y)</label>
+          <input id="yGapSlider" type="range" min="0.6" max="2.0" step="0.01" value="1">
+          <span id="yGapValue">1.00</span>
+        </div>
+
+        <div class="ms-row">
+          <label for="dilationSlider">Dilation (zoom)</label>
+          <input id="dilationSlider" type="range" min="0.5" max="2.0" step="0.01" value="1">
+          <span id="dilationValue">1.00</span>
         </div>
 
         <div class="ms-row">
@@ -120,6 +132,12 @@
     const gapSlider = document.getElementById('xGapSlider');
     const gapValue = document.getElementById('xGapValue');
 
+    const yGapSlider = document.getElementById('yGapSlider');
+    const yGapValue = document.getElementById('yGapValue');
+
+    const dilationSlider = document.getElementById('dilationSlider');
+    const dilationValue = document.getElementById('dilationValue');
+
     const optExtra = document.getElementById('optShowExtra');
     const devRow = document.getElementById('devControlsRow');
     const debugCheckbox = document.getElementById('msDebugCheckbox');
@@ -141,6 +159,8 @@
     }
     if (triSlider && triValue) triSlider.addEventListener('input', e=> triValue.textContent = e.target.value);
     if (gapSlider && gapValue) gapSlider.addEventListener('input', e=> gapValue.textContent = Number(e.target.value).toFixed(2));
+    if (yGapSlider && yGapValue) yGapSlider.addEventListener('input', e=> yGapValue.textContent = Number(e.target.value).toFixed(2));
+    if (dilationSlider && dilationValue) dilationSlider.addEventListener('input', e=> dilationValue.textContent = Number(e.target.value).toFixed(2));
 
     if (applyBtn) applyBtn.addEventListener('click', ()=>{
       const size = Number(sizeSlider.value);
