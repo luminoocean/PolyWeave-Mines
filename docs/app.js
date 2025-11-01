@@ -1,85 +1,46 @@
-// app.js — PolyWeave Mines (complete)
-// Supports: Square, Hex, Right-Triangle, Equilateral-Triangle (alternating up/down)
-// Expects IDs in index.html: appRoot, msRows, msCols, msMines, tilingSelect, adjacencySelect, applyAdjacency, newGame, msStatus
-// Optional controls present by index.html: triShrinkSlider, xGapSlider
+// app.js — PolyWeave Mines (updated)
+// - fixed equilateral triangles to be equilateral (60°)
+// - right-triangle tiling uses square-subdivision right triangles
+// - settings wired: size slider, gap scale, tri shrink, debug overlay
+// Expects index.html IDs: appRoot, msRows, msCols, msMines, tilingSelect, adjacencySelect, applyAdjacency, newGame, msStatus
+// Optional: triShrinkSlider, xGapSlider, sizeSlider, msDebugCheckbox
 
-/* ========= Configuration / constants ========= */
 const TILINGS = {
-  square: {
-    label: "Square",
-    adjacencies: {
-      "square-8": { label: "Square 8 (all 8)", offsets: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] },
-      "von-neumann": { label: "Von Neumann (4)", offsets: [[-1,0],[1,0],[0,-1],[0,1]] }
-    }
-  },
-  triangle_right: {
-    label: "Right Triangle",
-    adjacencies: {
-      "triR-edge": { label: "Right-tri edges", offsets: null },
-      "triR-rad":  { label: "Right-tri radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() }
-    }
-  },
-  triangle_equi: {
-    label: "Equilateral Triangle",
-    adjacencies: {
-      "triE-edge": { label: "Edges (3)", offsets: null },
-      "triE-edgev": { label: "Edges + vertices (6)", offsets: null },
-      "triE-rad": { label: "Radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() }
-    }
-  },
-  hex: {
-    label: "Hexagon",
-    adjacencies: {
-      "hex-6": { label: "Hex 6 (standard)", offsets: [[-1,0],[-1,1],[0,-1],[0,1],[1,0],[1,1]] }
-    }
-  }
+  square: { label: "Square", adjacencies: { "square-8": { label: "Square 8 (all 8)", offsets: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] }, "von-neumann": { label: "Von Neumann (4)", offsets: [[-1,0],[1,0],[0,-1],[0,1]] } } },
+  triangle_right: { label: "Right Triangle", adjacencies: { "triR-edge": { label: "Right-tri edge neighbors", offsets: null }, "triR-r2": { label: "Radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() } } },
+  triangle_equi: { label: "Equilateral Triangle", adjacencies: { "triE-edge": { label: "Edges (3)", offsets: null }, "triE-edgev": { label: "Edges+vertices (6)", offsets: null }, "triE-r2": { label: "Radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() } } },
+  hex: { label: "Hexagon", adjacencies: { "hex-6": { label: "Hex 6 (standard)", offsets: [[-1,0],[-1,1],[0,-1],[0,1],[1,0],[1,1]] } } }
 };
 
 const NUMBER_COLORS = {1:'#3ec7ff',2:'#ff6b6b',3:'#ffd27a',4:'#a88cff',5:'#ff9fb3',6:'#7ce7ff',7:'#d3d3d3',8:'#b0c4de'};
 
-/* ========= State ========= */
 let gameGrid = null;
 let running = false;
 let firstClick = true;
 let currentTiling = null;
 let currentAdjacency = null;
 
-/* ========= Small helpers ========= */
+// debug overlay
+let debugEnabled = false;
+let debugEl = null;
+
 function idx(rows, cols, r, c){ return r * cols + c; }
 function inBounds(rows, cols, r, c){ return r >= 0 && r < rows && c >= 0 && c < cols; }
-function makeSvgElement(tag, attrs={}) { const el = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) el.setAttribute(k, String(attrs[k])); return el; }
-function pointsToStr(points){ return points.map(p => `${p[0]},${p[1]}`).join(' '); }
 
-/* ========= Adjacency implementations for triangles ========= */
+function createGrid(rows, cols, mines=0){ return { rows, cols, mines, cells: Array(rows*cols).fill(0).map(()=>({ mine:false, revealed:false, flagged:false, count:0 })) }; }
+
 function triangleRightOffsets(r,c,adjKey){
-  // Right-triangle adjacency: orientation parity determines which corner is the right angle
-  const rightOriented = ((r + c) % 2) === 0;
-  if (adjKey === 'triR-edge') {
-    return rightOriented ? [[0,-1],[1,0],[0,1]] : [[0,-1],[-1,0],[0,1]];
-  }
-  // fallback radial neighborhood
-  const arr=[];
-  for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++) if(!(dr===0&&dc===0)) arr.push([dr,dc]);
-  return arr;
+  const right = ((r + c) % 2) === 0;
+  if (adjKey === 'triR-edge') return right ? [[0,-1],[1,0],[0,1]] : [[0,-1],[-1,0],[0,1]];
+  const arr=[]; for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++) if(!(dr===0&&dc===0)) arr.push([dr,dc]); return arr;
 }
 
+// equilateral offsets use alternating up/down
 function triangleEquiOffsets(r,c,adjKey){
-  // Up/down alternation for equilateral tiling
   const up = ((r + c) % 2) === 0;
   if (adjKey === 'triE-edge') return up ? [[0,-1],[1,0],[0,1]] : [[0,-1],[-1,0],[0,1]];
-  if (adjKey === 'triE-edgev') {
-    // Edges + nearby vertices (approx)
-    return up ? [[0,-1],[-1,0],[1,0],[0,1],[-1,1],[1,-1]] : [[0,-1],[-1,0],[1,0],[0,1],[-1,-1],[1,1]];
-  }
-  // fallback radius
-  const a=[];
-  for(let dr=-2; dr<=2; dr++) for(let dc=-2; dc<=2; dc++) if(!(dr===0&&dc===0)) a.push([dr,dc]);
-  return a;
-}
-
-/* ========= Grid API ========= */
-function createGrid(rows, cols, mines=0){
-  return { rows, cols, mines, cells: Array(rows*cols).fill(0).map(()=>({ mine:false, revealed:false, flagged:false, count:0 })) };
+  if (adjKey === 'triE-edgev') return up ? [[0,-1],[-1,0],[1,0],[0,1],[-1,1],[1,-1]] : [[0,-1],[-1,0],[1,0],[0,1],[-1,-1],[1,1]];
+  const arr=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) arr.push([dr,dc]); return arr;
 }
 
 function getOffsetsFor(tilingKey, adjacencyKey){
@@ -95,7 +56,7 @@ function computeCountsWithAdjacency(grid, tilingKey, adjacencyKey){
       if (cells[i].mine) { cells[i].count = -1; continue; }
       const offs = triangleRightOffsets(r,c,adjacencyKey);
       let cnt = 0;
-      for(const [dr,dc] of offs){ const rr=r+dr, cc=c+dc; if(!inBounds(rows,cols,rr,cc)) continue; if (cells[idx(rows,cols,rr,cc)].mine) cnt++; }
+      for (const [dr,dc] of offs){ const rr=r+dr, cc=c+dc; if (!inBounds(rows,cols,rr,cc)) continue; if (cells[idx(rows,cols,rr,cc)].mine) cnt++; }
       cells[i].count = cnt;
     }
     return;
@@ -106,7 +67,7 @@ function computeCountsWithAdjacency(grid, tilingKey, adjacencyKey){
       if (cells[i].mine) { cells[i].count = -1; continue; }
       const offs = triangleEquiOffsets(r,c,adjacencyKey);
       let cnt = 0;
-      for(const [dr,dc] of offs){ const rr=r+dr, cc=c+dc; if(!inBounds(rows,cols,rr,cc)) continue; if (cells[idx(rows,cols,rr,cc)].mine) cnt++; }
+      for (const [dr,dc] of offs){ const rr=r+dr, cc=c+dc; if (!inBounds(rows,cols,rr,cc)) continue; if (cells[idx(rows,cols,rr,cc)].mine) cnt++; }
       cells[i].count = cnt;
     }
     return;
@@ -116,17 +77,17 @@ function computeCountsWithAdjacency(grid, tilingKey, adjacencyKey){
     const i = idx(rows,cols,r,c);
     if (cells[i].mine) { cells[i].count = -1; continue; }
     let cnt = 0;
-    for(const [dr,dc] of offsets){ const rr=r+dr, cc=c+dc; if(!inBounds(rows,cols,rr,cc)) continue; if (cells[idx(rows,cols,rr,cc)].mine) cnt++; }
+    for (const [dr,dc] of offsets){ const rr=r+dr, cc=c+dc; if (!inBounds(rows,cols,rr,cc)) continue; if (cells[idx(rows,cols,rr,cc)].mine) cnt++; }
     cells[i].count = cnt;
   }
 }
 
 function placeMines(grid, mineCount, tilingKey, adjacencyKey, safeCell = null){
   const { rows, cols, cells } = grid;
-  cells.forEach(c=>{ c.mine=false; c.count=0; c.revealed=false; c.flagged=false; });
+  cells.forEach(cell => { cell.mine=false; cell.count=0; cell.revealed=false; cell.flagged=false; });
   const total = rows * cols;
-  const perm = Array.from({length:total}, (_,i)=>i);
-  for (let i=total-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [perm[i],perm[j]]=[perm[j],perm[i]]; }
+  const perm = Array.from({ length: total }, (_,i) => i);
+  for (let i = total-1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [perm[i], perm[j]] = [perm[j], perm[i]]; }
 
   const forbidden = new Set();
   if (safeCell){
@@ -135,24 +96,26 @@ function placeMines(grid, mineCount, tilingKey, adjacencyKey, safeCell = null){
     if (tilingKey === 'triangle_right') offs = triangleRightOffsets(sr,sc,adjacencyKey).concat([[0,0]]);
     else if (tilingKey === 'triangle_equi') offs = triangleEquiOffsets(sr,sc,adjacencyKey).concat([[0,0]]);
     else offs = getOffsetsFor(tilingKey, adjacencyKey).concat([[0,0]]);
-    for (const [dr,dc] of offs){ const rr=sr+dr, cc=sc+dc; if(!inBounds(rows,cols,rr,cc)) continue; forbidden.add(idx(rows,cols,rr,cc)); }
+    for (const [dr,dc] of offs){ const rr=sr+dr, cc=sc+dc; if (!inBounds(rows,cols,rr,cc)) continue; forbidden.add(idx(rows,cols,rr,cc)); }
   }
 
-  let placed=0, k=0, maxPlace=Math.min(mineCount, total-1);
+  let placed = 0, k = 0, maxPlace = Math.min(mineCount, total-1);
   while (placed < maxPlace && k < total){
-    const pos = perm[k++]; if (forbidden.has(pos)) continue; cells[pos].mine=true; placed++;
+    const pos = perm[k++];
+    if (forbidden.has(pos)) continue;
+    cells[pos].mine = true; placed++;
   }
   grid.mines = placed;
   computeCountsWithAdjacency(grid, tilingKey, adjacencyKey);
 }
 
-/* ========= Reveal / Flag / Win ========= */
 function revealCell(grid,r,c,tilingKey,adjacencyKey){
   const { rows, cols, cells } = grid;
   if (!inBounds(rows,cols,r,c)) return { changed: [], exploded:false };
-  const i = idx(rows,cols,r,c); const cell = cells[i];
+  const i = idx(rows,cols,r,c);
+  const cell = cells[i];
   if (!cell || cell.revealed || cell.flagged) return { changed: [], exploded:false };
-  if (cell.mine){ cell.revealed=true; return { changed:[[r,c]], exploded:true }; }
+  if (cell.mine) { cell.revealed = true; return { changed:[[r,c]], exploded:true }; }
 
   const changed = []; const stack = [[r,c]];
   while (stack.length){
@@ -164,36 +127,37 @@ function revealCell(grid,r,c,tilingKey,adjacencyKey){
     else if (tilingKey === 'triangle_equi') offs = triangleEquiOffsets(rr,cc,adjacencyKey);
     else offs = getOffsetsFor(tilingKey, adjacencyKey);
     if (cl.count === 0){
-      for (const [dr,dc] of offs){ const nr=rr+dr, nc=cc+dc; if (!inBounds(rows,cols,nr,nc)) continue; const ni = idx(rows,cols,nr,nc); if (!cells[ni].revealed && !cells[ni].flagged) stack.push([nr,nc]); }
+      for (const [dr,dc] of offs){ const nr = rr + dr, nc = cc + dc; if (!inBounds(rows,cols,nr,nc)) continue; const ni = idx(rows,cols,nr,nc); if (!cells[ni].revealed && !cells[ni].flagged) stack.push([nr,nc]); }
     }
   }
   return { changed, exploded:false };
 }
-function toggleFlag(grid,r,c){ const {rows,cols,cells} = grid; if (!inBounds(rows,cols,r,c)) return null; const i=idx(rows,cols,r,c); const cell=cells[i]; if(!cell || cell.revealed) return null; cell.flagged = !cell.flagged; return cell.flagged; }
+function toggleFlag(grid,r,c){ const { rows, cols, cells } = grid; if (!inBounds(rows,cols,r,c)) return null; const i = idx(rows,cols,r,c); const cell = cells[i]; if (!cell || cell.revealed) return null; cell.flagged = !cell.flagged; return cell.flagged; }
 function countFlaggedNeighbors(grid,r,c,tilingKey,adjacencyKey){ let offs; if (tilingKey === 'triangle_right') offs = triangleRightOffsets(r,c,adjacencyKey); else if (tilingKey === 'triangle_equi') offs = triangleEquiOffsets(r,c,adjacencyKey); else offs = getOffsetsFor(tilingKey, adjacencyKey); let cnt=0; for (const [dr,dc] of offs){ const rr=r+dr, cc=c+dc; if (!inBounds(grid.rows,grid.cols,rr,cc)) continue; if (grid.cells[idx(grid.rows,grid.cols,rr,cc)].flagged) cnt++; } return cnt; }
-function revealUnflaggedNeighbors(grid,r,c,tilingKey,adjacencyKey){ let offs; if (tilingKey === 'triangle_right') offs = triangleRightOffsets(r,c,adjacencyKey); else if (tilingKey === 'triangle_equi') offs = triangleEquiOffsets(r,c,adjacencyKey); else offs = getOffsetsFor(tilingKey, adjacencyKey); const toReveal=[]; for (const [dr,dc] of offs){ const rr=r+dr, cc=c+dc; if (!inBounds(grid.rows,grid.cols,rr,cc)) continue; const cell = grid.cells[idx(grid.rows,grid.cols,rr,cc)]; if (!cell.flagged && !cell.revealed) toReveal.push([rr,cc]); } return toReveal; }
+function revealUnflaggedNeighbors(grid,r,c,tilingKey,adjacencyKey){ let offs; if (tilingKey === 'triangle_right') offs = triangleRightOffsets(r,c,adjacencyKey); else if (tilingKey === 'triangle_equi') offs = triangleEquiOffsets(r,c,adjacencyKey); else offs = getOffsetsFor(tilingKey, adjacencyKey); const toReveal = []; for (const [dr,dc] of offs){ const rr=r+dr, cc=c+dc; if (!inBounds(grid.rows,grid.cols,rr,cc)) continue; const cell = grid.cells[idx(grid.rows,grid.cols,rr,cc)]; if (!cell.flagged && !cell.revealed) toReveal.push([rr,cc]); } return toReveal; }
 function checkWin(grid){ return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed)); }
 
-/* ========= Geometry builders (vertex lattices) ========= */
-/* Right-triangle lattice: subdivide square lattice into two right triangles per square.
-   We map each logical cell (r,c) to one triangle (parity toggles orientation). */
+/* SVG helpers */
+function makeSvgElement(tag, attrs={}) { const el = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) el.setAttribute(k, String(attrs[k])); return el; }
+function pointsToStr(points){ return points.map(p => `${p[0]},${p[1]}`).join(' '); }
+function computeSquarePolygon(cx,cy,size){ const s=size/2; return [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]]; }
+function computeHexPolygon(cx,cy,radius){ const pts=[]; for (let k=0;k<6;k++){ const angle=k*Math.PI/3; pts.push([cx+radius*Math.cos(angle), cy+radius*Math.sin(angle)]); } return pts; }
+
+/* Geometry builders */
+/* Right-triangle lattice (square subdivided) */
 function buildRightTriangleLattice(rows, cols, s, PAD = 8){
   const step = s;
   const vrows = rows + 1;
   const vcols = cols + 1;
   const vertices = [];
-  for (let vr=0; vr<vrows; vr++){
-    for (let vc=0; vc<vcols; vc++){
-      vertices.push({ x: PAD + vc * step, y: PAD + vr * step, vr, vc });
-    }
-  }
+  for (let vr=0; vr<vrows; vr++) for (let vc=0; vc<vcols; vc++) vertices.push({ x: PAD + vc * step, y: PAD + vr * step, vr, vc });
   const vIndex = (vr,vc) => vr * vcols + vc;
   const triIndex = [];
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
       const parity = ((r + c) % 2) === 0;
-      if (parity) triIndex.push({ r, c, upward:true, verts: [ vIndex(r,c), vIndex(r+1,c), vIndex(r,c+1) ] });
-      else triIndex.push({ r, c, upward:false, verts: [ vIndex(r+1,c+1), vIndex(r+1,c), vIndex(r,c+1) ] });
+      if (parity) triIndex.push({ r, c, upward:true, verts: [ vIndex(r, c), vIndex(r+1, c), vIndex(r, c+1) ] });
+      else triIndex.push({ r, c, upward:false, verts: [ vIndex(r+1, c+1), vIndex(r+1, c), vIndex(r, c+1) ] });
     }
   }
   const last = vertices[vertices.length-1];
@@ -202,9 +166,8 @@ function buildRightTriangleLattice(rows, cols, s, PAD = 8){
   return { vertices, triIndex, w, h };
 }
 
-/* Equilateral triangle lattice: vertices form hex-pattern.
-   Vert rows separated by h = sqrt(3)/2 * s; every other vertex row offset by s/2 horizontally.
-   Map each triangle cell (r,c) -> 3 shared vertices; triangles alternate up/down by parity. */
+/* Equilateral vertex lattice (true alternating up/down equilateral tessellation).
+   Each triangle uses three vertices that form an equilateral triangle with side length s. */
 function buildEquilateralVertexLattice(rows, cols, s, PAD = 8){
   const h = Math.sqrt(3)/2 * s;
   const vertexRows = rows + 1;
@@ -219,7 +182,7 @@ function buildEquilateralVertexLattice(rows, cols, s, PAD = 8){
     }
   }
   const vCols = vertexCols;
-  const vIndex = (vr,vc) => {
+  const vIndex = (vr, vc) => {
     const vrC = Math.max(0, Math.min(vertexRows-1, vr));
     const vcC = Math.max(0, Math.min(vCols-1, vc));
     return vrC * vCols + vcC;
@@ -230,8 +193,13 @@ function buildEquilateralVertexLattice(rows, cols, s, PAD = 8){
       const vr = r;
       const baseVc = c * 2;
       const up = ((r + c) % 2) === 0;
-      if (up) triIndex.push({ r, c, upward:true, verts: [ vIndex(vr, baseVc+1), vIndex(vr+1, baseVc), vIndex(vr+1, baseVc+2) ] });
-      else triIndex.push({ r, c, upward:false, verts: [ vIndex(vr+1, baseVc+1), vIndex(vr, baseVc), vIndex(vr, baseVc+2) ] });
+      if (up) {
+        // up triangle: top vertex at (vr, baseVc+1), bottom-left (vr+1, baseVc), bottom-right (vr+1, baseVc+2)
+        triIndex.push({ r, c, upward:true, verts: [ vIndex(vr, baseVc+1), vIndex(vr+1, baseVc), vIndex(vr+1, baseVc+2) ] });
+      } else {
+        // down triangle: bottom vertex at (vr+1, baseVc+1), top-left (vr, baseVc), top-right (vr, baseVc+2)
+        triIndex.push({ r, c, upward:false, verts: [ vIndex(vr+1, baseVc+1), vIndex(vr, baseVc), vIndex(vr, baseVc+2) ] });
+      }
     }
   }
   const last = vertices[vertices.length-1];
@@ -240,9 +208,8 @@ function buildEquilateralVertexLattice(rows, cols, s, PAD = 8){
   return { vertices, triIndex, w, h: H };
 }
 
-/* shrink function: move vertices toward centroid by shrinkPx (visual only). */
 function shrinkTriangleVertices(vertsPts, shrinkPx = 0){
-  if (!shrinkPx) return vertsPts.map(v=>[v.x,v.y]);
+  if (!shrinkPx) return vertsPts.map(v=>[v.x, v.y]);
   const cx = (vertsPts[0].x + vertsPts[1].x + vertsPts[2].x)/3;
   const cy = (vertsPts[0].y + vertsPts[1].y + vertsPts[2].y)/3;
   return vertsPts.map(v=>{
@@ -254,18 +221,15 @@ function shrinkTriangleVertices(vertsPts, shrinkPx = 0){
 }
 
 /* ========= Render ========= */
-function computeSquarePolygon(cx,cy,size){ const s=size/2; return [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]]; }
-function computeHexPolygon(cx,cy,radius){ const pts=[]; for(let k=0;k<6;k++){ const angle=k*Math.PI/3; pts.push([cx+radius*Math.cos(angle), cy+radius*Math.sin(angle)]); } return pts; }
-
 function renderTiledBoard(){
   const appRoot = document.getElementById('appRoot');
   if (!appRoot || !gameGrid) return;
   appRoot.innerHTML = '';
+  if (debugEl) debugEl.remove();
 
   const rows = gameGrid.rows, cols = gameGrid.cols;
-  const requestedCols = Math.max(1, cols);
-  const rawBase = Math.floor(720 / Math.max(8, requestedCols));
-  const baseSize = Math.max(12, Math.min(56, rawBase));
+  const rawBase = Math.floor(720 / Math.max(8, cols));
+  const baseSize = Math.max(10, Math.min(56, rawBase));
   const tileType = currentTiling || 'square';
   const triShrinkVal = Number((document.getElementById('triShrinkSlider')||{value:0}).value || 0);
   const gapScale = Number((document.getElementById('xGapSlider')||{value:1}).value || 1);
@@ -291,7 +255,7 @@ function renderTiledBoard(){
 
       const lx = (pts[0][0] + pts[1][0] + pts[2][0]) / 3;
       const ly = (pts[0][1] + pts[1][1] + pts[2][1]) / 3 + 4;
-      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor': 'middle', 'font-size': Math.max(10, baseSize/3), 'pointer-events':'none' });
+      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor': 'middle', 'font-size': Math.max(10, baseSize/3), 'pointer-events': 'none' });
 
       if (cell.revealed) {
         if (cell.mine) { label.textContent = '💣'; label.setAttribute('fill','#fff'); }
@@ -304,7 +268,7 @@ function renderTiledBoard(){
         if (!running) return;
         if (firstClick) { const minesVal = Number((document.getElementById('msMines')||{value:10}).value || 10); placeMines(gameGrid, minesVal, currentTiling, currentAdjacency, [r,c]); firstClick=false; }
         const res = revealCell(gameGrid, r, c, currentTiling, currentAdjacency);
-        if (res.exploded) { running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); const ms=document.getElementById('msStatus'); if (ms) ms.textContent='BOOM — you hit a mine'; }
+        if (res.exploded) { running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); const ms = document.getElementById('msStatus'); if (ms) ms.textContent='BOOM — you hit a mine'; }
         else { if (checkWin(gameGrid)) { running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } else { const ms=document.getElementById('msStatus'); if (ms) ms.textContent='Playing...'; } }
         renderTiledBoard();
       });
@@ -316,6 +280,7 @@ function renderTiledBoard(){
     }
 
     appRoot.appendChild(svg);
+    if (debugEnabled) addDebugOverlayEqui(lattice, svg);
     return;
   }
 
@@ -323,15 +288,15 @@ function renderTiledBoard(){
     const PAD = 8;
     const lattice = buildRightTriangleLattice(rows, cols, baseSize, PAD);
     const { vertices, triIndex, w: svgW, h: svgH } = lattice;
+    // horizontal gap scaling
     const svg = makeSvgElement('svg', { width: svgW * gapScale, height: svgH, viewBox: `0 0 ${svgW * gapScale} ${svgH}` });
     svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
 
     for (const ti of triIndex){
       const r = ti.r, c = ti.c;
       const vertsPts = ti.verts.map(i => vertices[i] || { x:0, y:0 });
-      // apply horizontal gapScale by scaling x relative to left padding
-      const scaledVerts = vertsPts.map(v => ({ x: (v.x - 8) * gapScale + 8, y: v.y }));
-      const pts = shrinkTriangleVertices(scaledVerts, shrinkPx);
+      const scaledVerts = vertsPts.map(v => ({ x: (v.x - PAD) * gapScale + PAD, y: v.y })); // scale horizontally around left PAD
+      const pts = shrinkTriangleVertices(scaledVerts, Number((document.getElementById('triShrinkSlider')||{value:0}).value || 0));
       const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke: '#0ea5b3', 'stroke-width': 1, 'stroke-linejoin': 'round', fill: '#022' });
       const cell = gameGrid.cells[idx(rows,cols,r,c)];
       if (cell.revealed) poly.setAttribute('fill','#032');
@@ -341,7 +306,7 @@ function renderTiledBoard(){
 
       const lx = (pts[0][0] + pts[1][0] + pts[2][0]) / 3;
       const ly = (pts[0][1] + pts[1][1] + pts[2][1]) / 3 + 4;
-      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor': 'middle', 'font-size': Math.max(10, baseSize/3), 'pointer-events':'none' });
+      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor': 'middle', 'font-size': Math.max(10, baseSize/3), 'pointer-events': 'none' });
 
       if (cell.revealed) {
         if (cell.mine) { label.textContent = '💣'; label.setAttribute('fill','#fff'); }
@@ -366,23 +331,23 @@ function renderTiledBoard(){
     }
 
     appRoot.appendChild(svg);
+    if (debugEnabled) addDebugOverlayRight(lattice, svg, gapScale);
     return;
   }
 
-  // Fallback: square or hex center-based rendering
-  let centers;
-  let canvasW, canvasH;
-  if (tileType === 'hex'){ const info = hexCenter(rows, cols, baseSize/2); centers = info.centers; canvasW = info.w; canvasH = info.h; }
-  else { const info = squareCenter(rows, cols, baseSize); centers = info.centers; canvasW = info.w; canvasH = info.h; }
+  // square/hex fallback
+  let centersInfo;
+  if (currentTiling === 'hex') centersInfo = hexCenter(rows, cols, baseSize / 2);
+  else centersInfo = squareCenter(rows, cols, baseSize);
 
-  const svg = makeSvgElement('svg', { width: canvasW, height: canvasH, viewBox: `0 0 ${canvasW} ${canvasH}` });
+  const svg = makeSvgElement('svg', { width: centersInfo.w, height: centersInfo.h, viewBox: `0 0 ${centersInfo.w} ${centersInfo.h}` });
   svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
 
-  for (const cellInfo of centers){
+  for (const cellInfo of centersInfo.centers){
     const r = cellInfo.r, c = cellInfo.c;
     const cx = cellInfo.x, cy = cellInfo.y;
     let pts;
-    if (tileType === 'hex') pts = computeHexPolygon(cx, cy, baseSize/2);
+    if (currentTiling === 'hex') pts = computeHexPolygon(cx, cy, baseSize/2);
     else pts = computeSquarePolygon(cx, cy, baseSize);
 
     const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke: '#0ea5b3', 'stroke-width':1, 'stroke-linejoin':'round', fill: '#022' });
@@ -429,11 +394,25 @@ function renderTiledBoard(){
   appRoot.appendChild(svg);
 }
 
-/* helper: square & hex center generation */
-function squareCenter(rows, cols, size){ const PAD=8; const centers=[]; for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){ const x = c*size + size/2 + PAD; const y = r*size + size/2 + PAD; centers.push({r,c,x,y}); } return { centers, w: cols*size + 16, h: rows*size + 16 }; }
+/* debug overlays */
+function addDebugOverlayEqui(lattice, svg){
+  debugEl = document.createElement('div'); debugEl.className = 'debug-overlay';
+  debugEl.style.position = 'relative';
+  const nodes = lattice.vertices.map((v,i)=> `v${i}:${Math.round(v.x)},${Math.round(v.y)}` ).slice(0,60).join(' ');
+  debugEl.textContent = `verts:${lattice.vertices.length} tris:${lattice.triIndex.length} ${nodes}`;
+  svg.parentNode.insertBefore(debugEl, svg.nextSibling);
+}
+function addDebugOverlayRight(lattice, svg, gapScale){
+  debugEl = document.createElement('div'); debugEl.className = 'debug-overlay';
+  debugEl.textContent = `verts:${lattice.vertices.length} tris:${lattice.triIndex.length} gapScale:${gapScale.toFixed(2)}`;
+  svg.parentNode.insertBefore(debugEl, svg.nextSibling);
+}
+
+/* center helpers */
+function squareCenter(rows, cols, size){ const PAD=8; const centers=[]; for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){ const x = c*size + size/2 + PAD; const y = r*size + size/2 + PAD; centers.push({r,c,x,y}); } return { centers, w: cols*size + 16, h: rows*size + 16 }; }
 function hexCenter(rows, cols, radius){ const R = radius; const hexWidth = 2*R; const hexHeight = Math.sqrt(3)*R; const xStep = 1.5*R; const yStep = hexHeight; const centers=[]; const PAD=8; for(let r=0;r<rows;r++){ for(let c=0;c<cols;c++){ const x = c*xStep + R + PAD; const y = r*yStep + ((c&1)?(hexHeight/2):0) + R + PAD; centers.push({r,c,x,y}); } } const w = (cols-1)*xStep + hexWidth + PAD*2; const h = (rows-1)*yStep + hexHeight + PAD*2; return { centers, w, h }; }
 
-/* ========= Controls wiring ========= */
+/* Controls wiring */
 function startNewGame(){
   const rows = Math.max(3, Number((document.getElementById('msRows')||{value:9}).value || 9));
   const cols = Math.max(3, Number((document.getElementById('msCols')||{value:9}).value || 9));
@@ -449,7 +428,6 @@ function startNewGame(){
 
   computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
   renderTiledBoard();
-
   try { window.gameGrid = gameGrid; window.currentTiling = currentTiling; window.currentAdjacency = currentAdjacency; window.TILINGS = TILINGS; } catch(e){}
 }
 
@@ -498,10 +476,9 @@ function populateTilingControls(){
   adjSel.__robust_change_handler = adjacencyHandler; adjSel.addEventListener('change', adjacencyHandler);
 }
 
-function applyAdjacencyAction(){ const sel=document.getElementById('tilingSelect'); const adjSel=document.getElementById('adjacencySelect'); if (!sel||!adjSel) return; currentTiling=sel.value; currentAdjacency=adjSel.value; try{ window.currentTiling=currentTiling; window.currentAdjacency=currentAdjacency; }catch(e){}; if (gameGrid){ computeCountsWithAdjacency(gameGrid,currentTiling,currentAdjacency); renderTiledBoard(); const ms=document.getElementById('msStatus'); if(ms) ms.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`; } }
+function applyAdjacencyAction(){ const sel=document.getElementById('tilingSelect'); const adjSel=document.getElementById('adjacencySelect'); if (!sel||!adjSel) return; currentTiling = sel.value; currentAdjacency = adjSel.value; try{ window.currentTiling=currentTiling; window.currentAdjacency=currentAdjacency; }catch(e){}; if (gameGrid){ computeCountsWithAdjacency(gameGrid,currentTiling,currentAdjacency); renderTiledBoard(); const ms=document.getElementById('msStatus'); if (ms) ms.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`; } }
 function newGameAction(){ startNewGame(); }
 
-/* ========= Init ========= */
 function initOnceDomReady(){
   populateTilingControls();
 
@@ -509,15 +486,18 @@ function initOnceDomReady(){
   if (applyBtn){ applyBtn.removeEventListener('click', applyAdjacencyAction); applyBtn.addEventListener('click', applyAdjacencyAction); }
   if (newBtn){ newBtn.removeEventListener('click', newGameAction); newBtn.addEventListener('click', newGameAction); }
 
-  const triSlider = document.getElementById('triShrinkSlider'); const xGap = document.getElementById('xGapSlider');
-  if (triSlider) triSlider.addEventListener('input', ()=>{ const v=triSlider.value; const el=document.getElementById('triShrinkValue'); if(el) el.textContent=v; renderTiledBoard(); });
-  if (xGap) xGap.addEventListener('input', ()=>{ const el=document.getElementById('xGapValue'); if(el) el.textContent = Number(xGap.value).toFixed(1); renderTiledBoard(); });
+  const triSlider = document.getElementById('triShrinkSlider'); const xGap = document.getElementById('xGapSlider'); const sizeSlider = document.getElementById('sizeSlider'); const debugBox = document.getElementById('msDebugCheckbox');
+  if (triSlider) triSlider.addEventListener('input', ()=>{ const v=triSlider.value; const el=document.getElementById('triShrinkValue'); if (el) el.textContent=v; renderTiledBoard(); });
+  if (xGap) xGap.addEventListener('input', ()=>{ const el=document.getElementById('xGapValue'); if (el) el.textContent = Number(xGap.value).toFixed(2); renderTiledBoard(); });
+  if (sizeSlider) sizeSlider.addEventListener('input', ()=>{ document.getElementById('msRows').value = sizeSlider.value; document.getElementById('msCols').value = sizeSlider.value; });
+
+  if (debugBox) debugBox.addEventListener('change', (e)=>{ debugEnabled = !!e.target.checked; renderTiledBoard(); });
 
   const status = document.getElementById('msStatus'); if (status) status.textContent = 'Ready — select tiling and click New Game';
   startNewGame();
 }
 
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initOnceDomReady); else setTimeout(initOnceDomReady,0);
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initOnceDomReady); else setTimeout(initOnceDomReady, 0);
 
-/* expose for debugging */
-try { window.renderTiledBoard = renderTiledBoard; window.placeMines = placeMines; window.gameGrid = gameGrid; } catch(e){}
+/* export for quick debugging */
+try { window.renderTiledBoard = renderTiledBoard; window.startNewGame = startNewGame; window.TILINGS = TILINGS; } catch(e){}
