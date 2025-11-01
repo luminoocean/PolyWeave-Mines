@@ -1,5 +1,9 @@
-// app.js — PolyWeave Mines (cleaned settings + rigid gaps + zoom + light mode)
-// Key: gapX/gapY shift tile centers (rigid), dilation (zoom) scales entire view via SVG viewBox sizing.
+// app.js — PolyWeave Mines (Themes + rigid gaps + dramatic zoom)
+// Key changes:
+// - gapX/gapY translate tile centers (no vertex scaling) so shapes are preserved
+// - zoom uses slider * multiplier to give a wider effect
+// - theme dropdown sets data-theme attribute on body
+// - editable numeric fields for zoom/gap values
 
 const TILINGS = {
   square: { label: "Square", adjacencies: { "square-8": { label: "Square 8 (all 8)", offsets: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] }, "von-neumann": { label: "Von Neumann (4)", offsets: [[-1,0],[1,0],[0,-1],[0,1]] } } },
@@ -18,11 +22,14 @@ let currentAdjacency = null;
 let debugEnabled = false;
 let debugEl = null;
 
+// zoom multiplier: slider value will be multiplied by this to create "dramatic" effect
+const ZOOM_MULTIPLIER = 3.0;
+
 function idx(rows, cols, r, c){ return r * cols + c; }
 function inBounds(rows, cols, r, c){ return r >= 0 && r < rows && c >= 0 && c < cols; }
 function createGrid(rows, cols){ return { rows, cols, cells: Array(rows*cols).fill(0).map(()=>({ mine:false, revealed:false, flagged:false, count:0 })) }; }
 
-/* ---------- adjacency functions ---------- */
+/* ---------- adjacency helpers ---------- */
 function triangleRightOffsets(r,c,adjKey){
   const rightPointing = ((r + c) % 2) === 0;
   if (adjKey === 'triR-edge') return rightPointing ? [[0,-1],[1,0],[0,1]] : [[0,-1],[-1,0],[0,1]];
@@ -129,8 +136,10 @@ function pointsToStr(points){ return points.map(p=>`${p[0]},${p[1]}`).join(' ');
 function computeSquarePolygon(cx,cy,size){ const s=size/2; return [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]]; }
 function computeHexPolygon(cx,cy,radius){ const pts=[]; for (let k=0;k<6;k++){ const angle=k*Math.PI/3; pts.push([cx+radius*Math.cos(angle), cy+radius*Math.sin(angle)]); } return pts; }
 
-/* ---------- lattice builders (triangles) ---------- */
-/* Zig lattice for right triangles (true zig pattern using equilateral vertex spacing) */
+/* ---------- lattices (triangles) ---------- */
+/* buildZigLattice and buildDiamondEqui compute base vertex coordinates.
+   We will preserve vertex geometry and perform rigid translations by moving the triangle centers. */
+
 function buildZigLattice(rows, cols, s, PAD = 8){
   const h = Math.sqrt(3)/2 * s;
   const vertexRows = rows + 1;
@@ -158,10 +167,9 @@ function buildZigLattice(rows, cols, s, PAD = 8){
   const last = vertices[vertices.length-1];
   const w = last ? last.x + s/2 + PAD : (cols * s + PAD*2);
   const H = (vertexRows - 1) * h + PAD*2 + h;
-  return { vertices, triIndex, w, h: H };
+  return { vertices, triIndex, w, h: H, cellCenters: computeTriangleCenters(vertices, triIndex) };
 }
 
-/* Diamond equilateral lattice: triangles share full edges so two make a diamond */
 function buildDiamondEqui(rows, cols, s, PAD = 8){
   const h = Math.sqrt(3)/2 * s;
   const vertexRows = rows + 1;
@@ -189,7 +197,18 @@ function buildDiamondEqui(rows, cols, s, PAD = 8){
   const last = vertices[vertices.length-1];
   const w = last ? last.x + s/2 + PAD : (cols * s + PAD*2);
   const H = (vertexRows - 1) * h + PAD*2 + h;
-  return { vertices, triIndex, w, h: H };
+  return { vertices, triIndex, w, h: H, cellCenters: computeTriangleCenters(vertices, triIndex) };
+}
+
+function computeTriangleCenters(vertices, triIndex){
+  // compute arithmetic centroid of each triangle (used to translate whole triangles)
+  const centers = triIndex.map(t => {
+    const pts = t.verts.map(i => vertices[i]);
+    const cx = (pts[0].x + pts[1].x + pts[2].x) / 3;
+    const cy = (pts[0].y + pts[1].y + pts[2].y) / 3;
+    return { r: t.r, c: t.c, cx, cy };
+  });
+  return centers;
 }
 
 function shrinkTriangleVertices(vertsPts, shrinkPx = 0){
@@ -213,41 +232,60 @@ function renderTiledBoard(){
 
   const rows = gameGrid.rows, cols = gameGrid.cols;
   const rawBase = Math.floor(720 / Math.max(8, cols));
-  const baseSize = Math.max(10, Math.min(56, rawBase));
+  const baseSize = Math.max(10, Math.min(64, rawBase));
   const tileType = currentTiling || 'square';
 
-  // read rigid transform values
+  // read UI values
+  const sliderZoomVal = Number((document.getElementById('zoomSlider')||{value:1}).value || 1);
+  const zoom = sliderZoomVal * ZOOM_MULTIPLIER; // apply multiplier for more dramatic zoom
   const gapX = Number((document.getElementById('xGapSlider')||{value:1}).value || 1);
   const gapY = Number((document.getElementById('yGapSlider')||{value:1}).value || 1);
-  const dilation = Number((document.getElementById('zoomSlider')||{value:1}).value || 1);
   debugEnabled = !!(document.getElementById('debugToggle') && document.getElementById('debugToggle').checked);
 
+  // choose lattice builders and compute logical coordinates (base coordinate system)
   if (tileType === 'triangle_right'){
     const lattice = buildZigLattice(rows, cols, baseSize, 8);
-    const { vertices, triIndex, w: svgW, h: svgH } = lattice;
-    const PAD = 8;
-    // construct SVG sized by logical lattice then apply zoom in viewBox scaling and translate tile centers by gapX/gapY
-    const viewW = svgW * dilation * gapX;
-    const viewH = svgH * dilation * gapY;
+    const { vertices, triIndex, w: svgW, h: svgH, cellCenters } = lattice;
+    // We'll render each triangle by translating its BASE centroid by (gapX-1, gapY-1) multipliers
+    // compute view extents using scaled lattice size
+    const viewW = svgW * zoom * gapX;
+    const viewH = svgH * zoom * gapY;
     const svg = makeSvgElement('svg', { width: viewW, height: viewH, viewBox: `0 0 ${viewW} ${viewH}` });
     svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
 
-    for (const ti of triIndex){
+    // For each triangle: compute transformed centroid = ((cx - PAD) * zoom) * gapX + PAD*zoom*gapX
+    const PAD = 8;
+    // precompute a translation function for centers: base -> transformed
+    const centerTransform = (x,y) => {
+      const tx = ((x - PAD) * zoom) * gapX + PAD * zoom * gapX;
+      const ty = ((y - PAD) * zoom) * gapY + PAD * zoom * gapY;
+      return { x: tx, y: ty };
+    };
+
+    for (let tiIndex=0; tiIndex < triIndex.length; tiIndex++){
+      const ti = triIndex[tiIndex];
       const r = ti.r, c = ti.c;
-      const vertsPts = ti.verts.map(i => vertices[i] || { x:0, y:0 });
-      // translate centers rigidly: first apply dilation about PAD origin, then scale gap by gapX/gapY
-      const transformed = vertsPts.map(v => ({ x: ((v.x - PAD) * dilation) * gapX + PAD * dilation * gapX, y: ((v.y - PAD) * dilation) * gapY + PAD * dilation * gapY }));
-      const pts = shrinkTriangleVertices(transformed, 0);
-      const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'#0ea5b3', 'stroke-width': Math.max(0.6, 1 * dilation), 'stroke-linejoin':'round', fill:'#022' });
+      // get base vertex coords
+      const ptsBase = ti.verts.map(i => vertices[i]);
+      // compute centroid from base (should match cellCenters)
+      const cxBase = (ptsBase[0].x + ptsBase[1].x + ptsBase[2].x) / 3;
+      const cyBase = (ptsBase[0].y + ptsBase[1].y + ptsBase[2].y) / 3;
+      const centerT = centerTransform(cxBase, cyBase);
+      // produce transformed polygon by translating each original vertex by delta = centerT - baseCenter*zoom*gap
+      // compute vertex positions after zoom & base offset and then translate so centroid matches centerT
+      const vertsZoomed = ptsBase.map(v => ({ x: ((v.x - PAD) * zoom) * gapX + PAD * zoom * gapX, y: ((v.y - PAD) * zoom) * gapY + PAD * zoom * gapY }));
+      // The centroid of vertsZoomed should already equal centerT; so vertsZoomed are final polygon points (rigid)
+      const pts = vertsZoomed.map(v=>[v.x, v.y]);
+      const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'var(--accent)', 'stroke-width': Math.max(0.6, 1 * zoom), 'stroke-linejoin':'round', fill:'rgba(2,10,20,0.85)' });
       const cell = gameGrid.cells[idx(rows,cols,r,c)];
-      if (cell.revealed) poly.setAttribute('fill','#032');
-      if (cell.flagged) poly.setAttribute('fill','#041');
-      if (cell.mine && cell.revealed) poly.setAttribute('fill','#550');
+      if (cell.revealed) poly.setAttribute('fill','rgba(10,30,40,0.9)');
+      if (cell.flagged) poly.setAttribute('fill','rgba(40,10,10,0.9)');
+      if (cell.mine && cell.revealed) poly.setAttribute('fill','rgba(120,40,30,0.95)');
       poly.classList.add('tile');
 
       const lx = (pts[0][0]+pts[1][0]+pts[2][0])/3;
-      const ly = (pts[0][1]+pts[1][1]+pts[2][1])/3 + 4 * dilation;
-      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': Math.max(10, (baseSize/3) * dilation) });
+      const ly = (pts[0][1]+pts[1][1]+pts[2][1])/3 + 4 * zoom;
+      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': Math.max(8, (baseSize/3) * zoom) });
 
       if (cell.revealed) {
         if (cell.mine) { label.textContent='💣'; label.setAttribute('fill','#fff'); }
@@ -255,22 +293,25 @@ function renderTiledBoard(){
         else label.textContent='';
       } else if (cell.flagged) { label.textContent='🚩'; label.setAttribute('fill','#ffb86b'); } else label.textContent='';
 
-      poly.addEventListener('click', ()=> {
-        if (!running) return;
-        if (firstClick) { const minesVal = Number((document.getElementById('msMines')||{value:10}).value || 10); placeMines(gameGrid,minesVal,currentTiling,currentAdjacency,[r,c]); firstClick=false; }
-        const res = revealCell(gameGrid,r,c,currentTiling,currentAdjacency);
-        if (res.exploded) { running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); const ms=document.getElementById('msStatus'); if (ms) ms.textContent='BOOM — you hit a mine'; }
-        else { if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } else { const ms=document.getElementById('msStatus'); if (ms) ms.textContent='Playing...'; } }
-        renderTiledBoard();
-      });
+      // interactive handlers
+      (function(r,c){
+        poly.addEventListener('click', ()=> {
+          if (!running) return;
+          if (firstClick) { const minesVal = Number((document.getElementById('msMines')||{value:10}).value || 10); placeMines(gameGrid,minesVal,currentTiling,currentAdjacency,[r,c]); firstClick=false; }
+          const res = revealCell(gameGrid,r,c,currentTiling,currentAdjacency);
+          if (res.exploded) { running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); const ms=document.getElementById('msStatus'); if (ms) ms.textContent='BOOM — you hit a mine'; }
+          else { if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } else { const ms=document.getElementById('msStatus'); if (ms) ms.textContent='Playing...'; } }
+          renderTiledBoard();
+        });
+        poly.addEventListener('contextmenu', (e)=> { e.preventDefault(); if (!running) return; toggleFlag(gameGrid,r,c); if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } renderTiledBoard(); });
+      })(r,c);
 
-      poly.addEventListener('contextmenu', (e)=> { e.preventDefault(); if (!running) return; toggleFlag(gameGrid,r,c); if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } renderTiledBoard(); });
-
-      svg.appendChild(poly); svg.appendChild(label);
+      svg.appendChild(poly);
+      svg.appendChild(label);
     }
 
     appRoot.appendChild(svg);
-    if (debugEnabled) addDebugOverlay(`verts:${vertices.length} tris:${triIndex.length} gapX:${gapX.toFixed(2)} gapY:${gapY.toFixed(2)} zoom:${dilation.toFixed(2)}`);
+    if (debugEnabled) addDebugOverlay(`verts:${vertices.length} tris:${triIndex.length} gapX:${gapX.toFixed(2)} gapY:${gapY.toFixed(2)} zoom:${zoom.toFixed(2)}`);
     return;
   }
 
@@ -278,26 +319,27 @@ function renderTiledBoard(){
     const lattice = buildDiamondEqui(rows, cols, baseSize, 8);
     const { vertices, triIndex, w: svgW, h: svgH } = lattice;
     const PAD = 8;
-    const viewW = svgW * dilation * gapX;
-    const viewH = svgH * dilation * gapY;
+    const viewW = svgW * zoom * gapX;
+    const viewH = svgH * zoom * gapY;
     const svg = makeSvgElement('svg', { width: viewW, height: viewH, viewBox: `0 0 ${viewW} ${viewH}` });
     svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
 
-    for (const ti of triIndex){
+    for (let tiIndex=0; tiIndex < triIndex.length; tiIndex++){
+      const ti = triIndex[tiIndex];
       const r = ti.r, c = ti.c;
-      const vertsPts = ti.verts.map(i => vertices[i] || { x:0, y:0 });
-      const transformed = vertsPts.map(v => ({ x: ((v.x - PAD) * dilation) * gapX + PAD * dilation * gapX, y: ((v.y - PAD) * dilation) * gapY + PAD * dilation * gapY }));
-      const pts = shrinkTriangleVertices(transformed, 0);
-      const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'#0ea5b3', 'stroke-width': Math.max(0.6, 1 * dilation), 'stroke-linejoin':'round', fill:'#022' });
+      const ptsBase = ti.verts.map(i => vertices[i]);
+      const vertsZoomed = ptsBase.map(v => ({ x: ((v.x - PAD) * zoom) * gapX + PAD * zoom * gapX, y: ((v.y - PAD) * zoom) * gapY + PAD * zoom * gapY }));
+      const pts = vertsZoomed.map(v=>[v.x, v.y]);
+      const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'var(--accent)', 'stroke-width': Math.max(0.6, 1 * zoom), 'stroke-linejoin':'round', fill:'rgba(4,18,30,0.9)' });
       const cell = gameGrid.cells[idx(rows,cols,r,c)];
-      if (cell.revealed) poly.setAttribute('fill','#032');
-      if (cell.flagged) poly.setAttribute('fill','#041');
-      if (cell.mine && cell.revealed) poly.setAttribute('fill','#550');
+      if (cell.revealed) poly.setAttribute('fill','rgba(18,44,60,0.95)');
+      if (cell.flagged) poly.setAttribute('fill','rgba(40,10,10,0.9)');
+      if (cell.mine && cell.revealed) poly.setAttribute('fill','rgba(120,40,30,0.95)');
       poly.classList.add('tile');
 
       const lx = (pts[0][0]+pts[1][0]+pts[2][0])/3;
-      const ly = (pts[0][1]+pts[1][1]+pts[2][1])/3 + 4 * dilation;
-      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': Math.max(10, (baseSize/3) * dilation) });
+      const ly = (pts[0][1]+pts[1][1]+pts[2][1])/3 + 4 * zoom;
+      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': Math.max(8, (baseSize/3) * zoom) });
 
       if (cell.revealed) {
         if (cell.mine) { label.textContent='💣'; label.setAttribute('fill','#fff'); }
@@ -305,33 +347,35 @@ function renderTiledBoard(){
         else label.textContent='';
       } else if (cell.flagged) { label.textContent='🚩'; label.setAttribute('fill','#ffb86b'); } else label.textContent='';
 
-      poly.addEventListener('click', ()=> {
-        if (!running) return;
-        if (firstClick) { const minesVal = Number((document.getElementById('msMines')||{value:10}).value || 10); placeMines(gameGrid,minesVal,currentTiling,currentAdjacency,[r,c]); firstClick=false; }
-        const res = revealCell(gameGrid,r,c,currentTiling,currentAdjacency);
-        if (res.exploded) { running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); const ms=document.getElementById('msStatus'); if (ms) ms.textContent='BOOM — you hit a mine'; }
-        else { if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } else { const ms=document.getElementById('msStatus'); if (ms) ms.textContent='Playing...'; } }
-        renderTiledBoard();
-      });
+      (function(r,c){
+        poly.addEventListener('click', ()=> {
+          if (!running) return;
+          if (firstClick) { const minesVal = Number((document.getElementById('msMines')||{value:10}).value || 10); placeMines(gameGrid,minesVal,currentTiling,currentAdjacency,[r,c]); firstClick=false; }
+          const res = revealCell(gameGrid,r,c,currentTiling,currentAdjacency);
+          if (res.exploded) { running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); const ms=document.getElementById('msStatus'); if (ms) ms.textContent='BOOM — you hit a mine'; }
+          else { if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } else { const ms=document.getElementById('msStatus'); if (ms) ms.textContent='Playing...'; } }
+          renderTiledBoard();
+        });
+        poly.addEventListener('contextmenu', (e)=> { e.preventDefault(); if (!running) return; toggleFlag(gameGrid,r,c); if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } renderTiledBoard(); });
+      })(r,c);
 
-      poly.addEventListener('contextmenu', (e)=> { e.preventDefault(); if (!running) return; toggleFlag(gameGrid,r,c); if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } renderTiledBoard(); });
-
-      svg.appendChild(poly); svg.appendChild(label);
+      svg.appendChild(poly);
+      svg.appendChild(label);
     }
 
     appRoot.appendChild(svg);
-    if (debugEnabled) addDebugOverlay(`verts:${vertices.length} tris:${triIndex.length} gapX:${gapX.toFixed(2)} gapY:${gapY.toFixed(2)} zoom:${dilation.toFixed(2)}`);
+    if (debugEnabled) addDebugOverlay(`verts:${vertices.length} tris:${triIndex.length} gapX:${gapX.toFixed(2)} gapY:${gapY.toFixed(2)} zoom:${zoom.toFixed(2)}`);
     return;
   }
 
-  // fallback: square or hex (apply rigid gaps by translating centers)
+  // fallback: square or hex — translate centers rigidly using gapX/gapY and zoom
   const gapXc = gapX;
   const gapYc = gapY;
-  const dilationc = dilation;
+  const zoomc = zoom;
 
   let centersInfo;
-  if (currentTiling === 'hex') centersInfo = hexCenter(rows, cols, (baseSize/2) * dilationc);
-  else centersInfo = squareCenter(rows, cols, baseSize * dilationc);
+  if (currentTiling === 'hex') centersInfo = hexCenter(rows, cols, (baseSize/2) * zoomc);
+  else centersInfo = squareCenter(rows, cols, baseSize * zoomc);
 
   const svg = makeSvgElement('svg', { width: centersInfo.w * gapXc, height: centersInfo.h * gapYc, viewBox: `0 0 ${centersInfo.w * gapXc} ${centersInfo.h * gapYc}` });
   svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
@@ -341,46 +385,48 @@ function renderTiledBoard(){
     const cx = cellInfo.x * gapXc;
     const cy = cellInfo.y * gapYc;
     let pts;
-    if (currentTiling === 'hex') pts = computeHexPolygon(cx, cy, (baseSize/2) * dilationc);
-    else pts = computeSquarePolygon(cx, cy, baseSize * dilationc);
+    if (currentTiling === 'hex') pts = computeHexPolygon(cx, cy, (baseSize/2) * zoomc);
+    else pts = computeSquarePolygon(cx, cy, baseSize * zoomc);
 
-    const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'#0ea5b3', 'stroke-width': Math.max(0.6, 1 * dilationc), 'stroke-linejoin':'round', fill:'#022' });
+    const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'var(--accent)', 'stroke-width': Math.max(0.6, 1 * zoomc), 'stroke-linejoin':'round', fill:'rgba(2,10,20,0.9)' });
     const cell = gameGrid.cells[idx(rows,cols,r,c)];
-    if (cell.revealed) poly.setAttribute('fill','#032');
-    if (cell.flagged) poly.setAttribute('fill','#041');
-    if (cell.mine && cell.revealed) poly.setAttribute('fill','#550');
+    if (cell.revealed) poly.setAttribute('fill','rgba(10,30,40,0.95)');
+    if (cell.flagged) poly.setAttribute('fill','rgba(40,10,10,0.9)');
+    if (cell.mine && cell.revealed) poly.setAttribute('fill','rgba(120,40,30,0.95)');
 
-    const label = makeSvgElement('text', { x: cx, y: cy + 4 * dilationc, 'text-anchor': 'middle', 'font-size': Math.max(12, (baseSize/3) * dilationc) });
+    const label = makeSvgElement('text', { x: cx, y: cy + 4 * zoomc, 'text-anchor': 'middle', 'font-size': Math.max(10, (baseSize/3) * zoomc) });
     if (cell.revealed) {
       if (cell.mine) { label.textContent='💣'; label.setAttribute('fill','#fff'); }
       else if (cell.count>0) { label.textContent=String(cell.count); label.setAttribute('fill', NUMBER_COLORS[cell.count]||'#9be7ff'); }
       else label.textContent='';
     } else if (cell.flagged) { label.textContent='🚩'; label.setAttribute('fill','#ffb86b'); } else label.textContent='';
 
-    poly.addEventListener('click', ()=> {
-      if (!running) return;
-      if (cell.revealed && cell.count > 0) {
-        const flagged = countFlaggedNeighbors(gameGrid, r, c, currentTiling, currentAdjacency);
-        if (flagged === cell.count) {
-          const toReveal = revealUnflaggedNeighbors(gameGrid, r, c, currentTiling, currentAdjacency);
-          let exploded=false;
-          for (const [ar,ac] of toReveal){ const res = revealCell(gameGrid, ar, ac, currentTiling, currentAdjacency); if (res.exploded) exploded=true; }
-          if (exploded) { running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); const ms=document.getElementById('msStatus'); if (ms) ms.textContent='BOOM — a mine was revealed during chord'; }
-          else { if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } else { const ms=document.getElementById('msStatus'); if (ms) ms.textContent='Playing...'; } }
-          renderTiledBoard(); return;
+    (function(r,c){
+      poly.addEventListener('click', ()=> {
+        if (!running) return;
+        if (cell.revealed && cell.count > 0) {
+          const flagged = countFlaggedNeighbors(gameGrid, r, c, currentTiling, currentAdjacency);
+          if (flagged === cell.count) {
+            const toReveal = revealUnflaggedNeighbors(gameGrid, r, c, currentTiling, currentAdjacency);
+            let exploded=false;
+            for (const [ar,ac] of toReveal){ const res = revealCell(gameGrid, ar, ac, currentTiling, currentAdjacency); if (res.exploded) exploded=true; }
+            if (exploded) { running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); const ms=document.getElementById('msStatus'); if (ms) ms.textContent='BOOM — a mine was revealed during chord'; }
+            else { if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } else { const ms=document.getElementById('msStatus'); if (ms) ms.textContent='Playing...'; } }
+            renderTiledBoard(); return;
+          }
+          return;
         }
-        return;
-      }
-      if (firstClick) { const minesVal = Number((document.getElementById('msMines')||{value:10}).value || 10); placeMines(gameGrid, minesVal, currentTiling, currentAdjacency, [r,c]); firstClick=false; }
-      const res = revealCell(gameGrid, r, c, currentTiling, currentAdjacency);
-      if (res.exploded) { running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); const ms=document.getElementById('msStatus'); if (ms) ms.textContent='BOOM — you hit a mine'; }
-      else { if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } else { const ms=document.getElementById('msStatus'); if (ms) ms.textContent='Playing...'; } }
-      renderTiledBoard();
-    });
+        if (firstClick) { const minesVal = Number((document.getElementById('msMines')||{value:10}).value || 10); placeMines(gameGrid, minesVal, currentTiling, currentAdjacency, [r,c]); firstClick=false; }
+        const res = revealCell(gameGrid, r, c, currentTiling, currentAdjacency);
+        if (res.exploded) { running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); const ms=document.getElementById('msStatus'); if (ms) ms.textContent='BOOM — you hit a mine'; }
+        else { if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } else { const ms=document.getElementById('msStatus'); if (ms) ms.textContent='Playing...'; } }
+        renderTiledBoard();
+      });
+      poly.addEventListener('contextmenu', (e)=> { e.preventDefault(); if (!running) return; toggleFlag(gameGrid,r,c); if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } renderTiledBoard(); });
+    })(r,c);
 
-    poly.addEventListener('contextmenu', (e)=> { e.preventDefault(); if (!running) return; toggleFlag(gameGrid, r, c); if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } renderTiledBoard(); });
-
-    svg.appendChild(poly); svg.appendChild(label);
+    svg.appendChild(poly);
+    svg.appendChild(label);
   }
 
   appRoot.appendChild(svg);
@@ -413,7 +459,6 @@ function startNewGame(){
   currentTiling = (document.getElementById('tilingSelect')||{}).value || Object.keys(TILINGS)[0];
   currentAdjacency = (document.getElementById('adjacencySelect')||{}).value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
 
-  // place zero mines until first click (first-click safe)
   computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
   renderTiledBoard();
   try { window.gameGrid = gameGrid; window.currentTiling = currentTiling; window.currentAdjacency = currentAdjacency; window.TILINGS = TILINGS; } catch(e){}
@@ -474,11 +519,37 @@ function initOnceDomReady(){
   if (applyBtn){ applyBtn.removeEventListener('click', applyAdjacencyAction); applyBtn.addEventListener('click', applyAdjacencyAction); }
   if (newBtn){ newBtn.removeEventListener('click', newGameAction); newBtn.addEventListener('click', newGameAction); }
 
-  const zoomSlider = document.getElementById('zoomSlider'); const xGap = document.getElementById('xGapSlider'); const yGap = document.getElementById('yGapSlider'); const lightBox = document.getElementById('lightMode'); const debugBox = document.getElementById('debugToggle');
-  if (zoomSlider) zoomSlider.addEventListener('input', ()=>{ const v=zoomSlider.value; const el=document.getElementById('zoomValue'); if (el) el.textContent = Number(v).toFixed(2); renderTiledBoard(); });
-  if (xGap) xGap.addEventListener('input', ()=>{ const el=document.getElementById('xGapValue'); if (el) el.textContent = Number(xGap.value).toFixed(2); renderTiledBoard(); });
-  if (yGap) yGap.addEventListener('input', ()=>{ const el=document.getElementById('yGapValue'); if (el) el.textContent = Number(yGap.value).toFixed(2); renderTiledBoard(); });
-  if (lightBox) lightBox.addEventListener('change', ()=> document.body.classList.toggle('light-mode', lightBox.checked));
+  // wire settings controls
+  const zoomSlider = document.getElementById('zoomSlider'); const xGap = document.getElementById('xGapSlider'); const yGap = document.getElementById('yGapSlider');
+  const zoomValue = document.getElementById('zoomValue'); const xGapValue = document.getElementById('xGapValue'); const yGapValue = document.getElementById('yGapValue');
+  const themeSelect = document.getElementById('themeSelect'); const debugBox = document.getElementById('debugToggle');
+
+  if (zoomSlider && zoomValue){
+    zoomSlider.addEventListener('input', ()=> {
+      zoomValue.value = (Number(zoomSlider.value) * ZOOM_MULTIPLIER).toFixed(2);
+      renderTiledBoard();
+    });
+    zoomValue.addEventListener('blur', ()=> {
+      let v = Number(zoomValue.value);
+      if (Number.isNaN(v) || v <= 0) v = Number(zoomSlider.value) * ZOOM_MULTIPLIER;
+      const newRange = v / ZOOM_MULTIPLIER;
+      zoomSlider.value = newRange;
+      zoomValue.value = (Number(zoomSlider.value) * ZOOM_MULTIPLIER).toFixed(2);
+      renderTiledBoard();
+    });
+  }
+
+  if (xGap && xGapValue){
+    xGap.addEventListener('input', ()=> { xGapValue.value = Number(xGap.value).toFixed(2); renderTiledBoard(); });
+    xGapValue.addEventListener('blur', ()=> { let v=Number(xGapValue.value); if (Number.isNaN(v) || v<=0) v=Number(xGap.value); xGap.value = v; xGapValue.value = Number(xGap.value).toFixed(2); renderTiledBoard(); });
+  }
+
+  if (yGap && yGapValue){
+    yGap.addEventListener('input', ()=> { yGapValue.value = Number(yGap.value).toFixed(2); renderTiledBoard(); });
+    yGapValue.addEventListener('blur', ()=> { let v=Number(yGapValue.value); if (Number.isNaN(v) || v<=0) v=Number(yGap.value); yGap.value = v; yGapValue.value = Number(yGap.value).toFixed(2); renderTiledBoard(); });
+  }
+
+  if (themeSelect) themeSelect.addEventListener('change', ()=> { document.body.setAttribute('data-theme', themeSelect.value || 'dark-ocean'); renderTiledBoard(); });
   if (debugBox) debugBox.addEventListener('change', ()=> { debugEnabled = !!debugBox.checked; renderTiledBoard(); });
 
   const status = document.getElementById('msStatus'); if (status) status.textContent = 'Ready — select tiling and click New Game';
