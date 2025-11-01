@@ -599,14 +599,29 @@ function populateTilingControls() {
   currentAdjacency = adjacencySelect.value || adjacencySelect.options[0].value;
 
   tilingSelect.addEventListener('change', (e) => {
-    populateAdj(e.target.value);
-    currentTiling = e.target.value;
+    const newTiling = e.target.value;
+    // repopulate adjacency list for the newly selected tiling
+    populateAdj(newTiling);
+
+    // update globals
+    currentTiling = newTiling;
     currentAdjacency = adjacencySelect.value;
+
+    // update status line
     msStatus.textContent = `Tiling: ${TILINGS[currentTiling].label} (Adjacency: ${TILINGS[currentTiling].adjacencies[currentAdjacency].label})`;
+
+    // If a game is already in progress or exists, recompute counts AND re-render
     if (gameGrid) {
+      // Recompute counts with new adjacency rules without touching mine placement
+      computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
+
+      // Re-render with the correct renderer for the tiling
       if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
+    } else {
+      // No grid yet; startNewGame will use the selected tiling when launched
     }
   });
+
 
   adjacencySelect.addEventListener('change', ()=> {
     currentAdjacency = adjacencySelect.value;
