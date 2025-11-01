@@ -1,10 +1,4 @@
-// app.js — PolyWeave Mines (final fixes)
-// - gapX/gapY are rigid translations of tile centers (no vertex scaling)
-// - zoom range 0.1-2.0; slider value used directly and read fresh each render
-// - stroke width constant (does not scale with zoom)
-// - label font size capped
-// - theme dropdown preserved; debug overlay preserved
-
+// app.js — final fixes (rigid triangle transforms, constant stroke, inverse label scaling, select contrast)
 const TILINGS = {
   square: { label: "Square", adjacencies: { "square-8": { label: "Square 8 (all 8)", offsets: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] }, "von-neumann": { label: "Von Neumann (4)", offsets: [[-1,0],[1,0],[0,-1],[0,1]] } } },
   triangle_right: { label: "Right Triangle (zig)", adjacencies: { "triR-edge": { label: "Edges (3)", offsets: null }, "triR-r2": { label: "Radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() } } },
@@ -205,11 +199,13 @@ function computeTriangleCenters(vertices, triIndex){
   });
 }
 
-function applyRigidTranslationToTriangle(ptsBase, baseCenter, transformedCenter){
-  // compute delta and apply same delta to all pts (rigid translation)
-  const dx = transformedCenter.x - baseCenter.x;
-  const dy = transformedCenter.y - baseCenter.y;
-  return ptsBase.map(p => [p.x + dx, p.y + dy]);
+function translatePoints(points, dx, dy){ return points.map(p => [p.x + dx, p.y + dy]); }
+function scalePointsAround(points, cx, cy, scale){
+  return points.map(p => {
+    const x = (p.x - cx) * scale + cx;
+    const y = (p.y - cy) * scale + cy;
+    return { x, y };
+  });
 }
 
 /* ---------- Render ---------- */
@@ -225,49 +221,56 @@ function renderTiledBoard(){
   const tileType = currentTiling || 'square';
 
   // read UI values fresh each render
-  const zoomSliderVal = Number((document.getElementById('zoomSlider')||{value:1}).value || 1);
-  const zoom = Math.max(0.1, Math.min(2.0, zoomSliderVal)); // enforce 0.1-2.0
+  const zoom = Math.max(0.1, Math.min(2.0, Number((document.getElementById('zoomSlider')||{value:1}).value || 1)));
   const gapX = Number((document.getElementById('xGapSlider')||{value:1}).value || 1);
   const gapY = Number((document.getElementById('yGapSlider')||{value:1}).value || 1);
   debugEnabled = !!(document.getElementById('debugToggle') && document.getElementById('debugToggle').checked);
 
-  const STROKE_WIDTH = 1; // constant stroke width regardless of zoom
+  const STROKE_WIDTH = 1.25; // constant stroke width regardless of zoom
   const LABEL_FONT_CAP = 20; // px cap for label font size
+
+  // For labels we want readable size independent of zoom.
+  // Use inverse scaling: visualFont = baseFont / zoom, capped.
+  const baseLabel = Math.max(10, baseSize / 4);
 
   if (tileType === 'triangle_right'){
     const lattice = buildZigLattice(rows, cols, baseSize, 8);
     const { vertices, triIndex, w: svgW, h: svgH, centers, PAD } = lattice;
 
-    // compute scaled logical extents and create SVG
+    // compute view extents based on zoom and gaps
     const viewW = svgW * zoom * gapX;
     const viewH = svgH * zoom * gapY;
     const svg = makeSvgElement('svg', { width: viewW, height: viewH, viewBox: `0 0 ${viewW} ${viewH}` });
     svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
 
-    // helper to convert a base point to transformed point by zoom and gap (without deforming)
     const transformPoint = (x,y) => {
       const tx = ((x - PAD) * zoom) * gapX + PAD * zoom * gapX;
       const ty = ((y - PAD) * zoom) * gapY + PAD * zoom * gapY;
       return { x: tx, y: ty };
     };
 
-    // iterate triangles
     for (let t=0; t<triIndex.length; t++){
       const ti = triIndex[t];
       const r = ti.r, c = ti.c;
-      const ptsBase = ti.verts.map(i => vertices[i]); // objects with x,y
+      const ptsBase = ti.verts.map(i => vertices[i]); // {x,y}
       const baseCenter = { x: (ptsBase[0].x + ptsBase[1].x + ptsBase[2].x)/3, y: (ptsBase[0].y + ptsBase[1].y + ptsBase[2].y)/3 };
 
-      // compute transformed center and transformed base vertices (zoomed)
-      const transformedCenter = transformPoint(baseCenter.x, baseCenter.y);
-      const vertsZoomed = ptsBase.map(p => ({ x: ((p.x - PAD) * zoom) * gapX + PAD * zoom * gapX, y: ((p.y - PAD) * zoom) * gapY + PAD * zoom * gapY }));
+      // STEP 1: scale triangle about its centroid by zoom (so geometry scales uniformly)
+      // NOTE: scaling here is geometric zoom (tile size changes), not gap deformation.
+      const scaled = scalePointsAround(ptsBase, baseCenter.x, baseCenter.y, zoom);
 
-      // but to ensure rigid translation we compute delta between transformedCenter and centroid(vertsZoomed)
-      const centroidZoomed = { x:(vertsZoomed[0].x+vertsZoomed[1].x+vertsZoomed[2].x)/3, y:(vertsZoomed[0].y+vertsZoomed[1].y+vertsZoomed[2].y)/3 };
-      const dx = transformedCenter.x - centroidZoomed.x;
-      const dy = transformedCenter.y - centroidZoomed.y;
-      const finalPts = vertsZoomed.map(v => [v.x + dx, v.y + dy]); // rigid translation
+      // STEP 2: compute where the base centroid *should* be after gapX/gapY and zoom
+      const desiredCenter = transformPoint(baseCenter.x, baseCenter.y);
 
+      // find centroid of scaled points
+      const centroidScaled = { x:(scaled[0].x + scaled[1].x + scaled[2].x)/3, y:(scaled[0].y + scaled[1].y + scaled[2].y)/3 };
+
+      // STEP 3: compute delta and translate scaled points rigidly
+      const dx = desiredCenter.x - centroidScaled.x;
+      const dy = desiredCenter.y - centroidScaled.y;
+      const finalPts = scaled.map(p => [p.x + dx, p.y + dy]);
+
+      // render polygon with constant stroke
       const poly = makeSvgElement('polygon', { points: pointsToStr(finalPts), stroke:'var(--accent)', 'stroke-width': STROKE_WIDTH, 'stroke-linejoin':'round', fill:'rgba(2,10,20,0.88)' });
       const cell = gameGrid.cells[idx(rows,cols,r,c)];
       if (cell.revealed) poly.setAttribute('fill','rgba(10,28,40,0.95)');
@@ -275,11 +278,13 @@ function renderTiledBoard(){
       if (cell.mine && cell.revealed) poly.setAttribute('fill','rgba(140,50,40,0.98)');
       poly.classList.add('tile');
 
+      // label: keep readable size by inverse-scaling with zoom
+      const rawFont = baseLabel / Math.max(0.5, zoom);
+      const fontSize = Math.min(LABEL_FONT_CAP, Math.max(8, rawFont));
       const lx = (finalPts[0][0]+finalPts[1][0]+finalPts[2][0])/3;
       const ly = (finalPts[0][1]+finalPts[1][1]+finalPts[2][1])/3 + 4;
-      const fontSize = Math.min(LABEL_FONT_CAP, Math.max(8, (baseSize/4) * zoom));
-      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': fontSize });
 
+      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': fontSize });
       if (cell.revealed) {
         if (cell.mine) { label.textContent='💣'; label.setAttribute('fill','#fff'); }
         else if (cell.count>0) { label.textContent=String(cell.count); label.setAttribute('fill', NUMBER_COLORS[cell.count]||'#9be7ff'); }
@@ -326,12 +331,13 @@ function renderTiledBoard(){
       const r = ti.r, c = ti.c;
       const ptsBase = ti.verts.map(i => vertices[i]);
       const baseCenter = { x: (ptsBase[0].x + ptsBase[1].x + ptsBase[2].x)/3, y: (ptsBase[0].y + ptsBase[1].y + ptsBase[2].y)/3 };
-      const transformedCenter = transformPoint(baseCenter.x, baseCenter.y);
-      const vertsZoomed = ptsBase.map(p => ({ x: ((p.x - PAD) * zoom) * gapX + PAD * zoom * gapX, y: ((p.y - PAD) * zoom) * gapY + PAD * zoom * gapY }));
-      const centroidZoomed = { x:(vertsZoomed[0].x+vertsZoomed[1].x+vertsZoomed[2].x)/3, y:(vertsZoomed[0].y+vertsZoomed[1].y+vertsZoomed[2].y)/3 };
-      const dx = transformedCenter.x - centroidZoomed.x;
-      const dy = transformedCenter.y - centroidZoomed.y;
-      const finalPts = vertsZoomed.map(v => [v.x + dx, v.y + dy]);
+
+      const scaled = scalePointsAround(ptsBase, baseCenter.x, baseCenter.y, zoom);
+      const desiredCenter = transformPoint(baseCenter.x, baseCenter.y);
+      const centroidScaled = { x:(scaled[0].x + scaled[1].x + scaled[2].x)/3, y:(scaled[0].y + scaled[1].y + scaled[2].y)/3 };
+      const dx = desiredCenter.x - centroidScaled.x;
+      const dy = desiredCenter.y - centroidScaled.y;
+      const finalPts = scaled.map(p => [p.x + dx, p.y + dy]);
 
       const poly = makeSvgElement('polygon', { points: pointsToStr(finalPts), stroke:'var(--accent)', 'stroke-width': STROKE_WIDTH, 'stroke-linejoin':'round', fill:'rgba(4,18,30,0.9)' });
       const cell = gameGrid.cells[idx(rows,cols,r,c)];
@@ -340,9 +346,10 @@ function renderTiledBoard(){
       if (cell.mine && cell.revealed) poly.setAttribute('fill','rgba(140,50,40,0.98)');
       poly.classList.add('tile');
 
+      const baseLabel = Math.max(10, baseSize / 4);
+      const fontSize = Math.min(LABEL_FONT_CAP, Math.max(8, baseLabel / Math.max(0.5, zoom)));
       const lx = (finalPts[0][0]+finalPts[1][0]+finalPts[2][0])/3;
       const ly = (finalPts[0][1]+finalPts[1][1]+finalPts[2][1])/3 + 4;
-      const fontSize = Math.min(LABEL_FONT_CAP, Math.max(8, (baseSize/4) * zoom));
       const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': fontSize });
 
       if (cell.revealed) {
@@ -398,7 +405,8 @@ function renderTiledBoard(){
     if (cell.flagged) poly.setAttribute('fill','rgba(60,20,20,0.95)');
     if (cell.mine && cell.revealed) poly.setAttribute('fill','rgba(140,50,40,0.98)');
 
-    const label = makeSvgElement('text', { x: cx, y: cy + 4, 'text-anchor': 'middle', 'font-size': Math.min(LABEL_FONT_CAP, Math.max(8, (baseSize/4) * zoomc)) });
+    const fontSize = Math.min(LABEL_FONT_CAP, Math.max(8, (baseSize/4) / Math.max(0.5, zoomc)));
+    const label = makeSvgElement('text', { x: cx, y: cy + 4, 'text-anchor': 'middle', 'font-size': fontSize });
     if (cell.revealed) {
       if (cell.mine) { label.textContent='💣'; label.setAttribute('fill','#fff'); }
       else if (cell.count>0) { label.textContent=String(cell.count); label.setAttribute('fill', NUMBER_COLORS[cell.count]||'#9be7ff'); }
