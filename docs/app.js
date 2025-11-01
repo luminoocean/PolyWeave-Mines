@@ -656,6 +656,22 @@ function wireEventHandlers() {
     currentAdjacency = adjacencySelect.value;
   });
 }
+function initOnceDomReady() {
+  bindDomRefs();
+  
+  if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !tilingSelect || !adjacencySelect || !applyAdjacencyBtn || !msStatus) {
+    console.error('Initialization failed: one or more controls missing.');
+    return;
+  }
+  
+  populateTilingControls();
+  wireEventHandlers();
+  
+  currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
+  currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
+  startNewGame();
+}
+
 setTimeout(() => {
     initOnceDomReady();
 }, 100);
