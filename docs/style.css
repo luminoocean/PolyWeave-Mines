@@ -7,13 +7,16 @@
   --sub: #bfefff;
 }
 
+/* light mode overrides */
+body.light-mode{ --bg-0: #fbfbfc; --panel: linear-gradient(180deg,#ffffff,#f3f6f8); --accent:#0b8b7a; --text:#062426; --sub:#0b5f5b; --muted: rgba(0,0,0,0.06); }
+
 *{ box-sizing:border-box; }
 html,body{ height:100%; margin:0; font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:var(--bg-0); color:var(--text); }
 
-.controls{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px; background:linear-gradient(180deg, rgba(10,20,28,0.85), rgba(5,12,20,0.8)); border-bottom:1px solid var(--muted); position:sticky; top:0; z-index:50; }
+.controls{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px; background:var(--panel); border-bottom:1px solid var(--muted); position:sticky; top:0; z-index:50; }
 .control-group{ display:flex; gap:8px; align-items:center; }
 label{ font-size:13px; color:var(--sub); }
-input[type="number"], select{ background: rgba(6,20,28,0.6); border:1px solid rgba(255,255,255,0.04); color:var(--text); padding:7px 8px; border-radius:8px; min-width:72px; font-size:13px; }
+input[type="number"], select{ background: rgba(6,20,28,0.06); border:1px solid rgba(0,0,0,0.06); color:var(--text); padding:7px 8px; border-radius:8px; min-width:72px; font-size:13px; }
 .ms-btn{ font-size:13px; padding:7px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); background:linear-gradient(#0b1220,#061018); color:var(--sub); cursor:pointer; }
 .ms-btn.primary{ background: linear-gradient(var(--accent), #0b98ad); color:#042426; font-weight:600; }
 #msStatus{ padding:8px 12px; font-size:13px; color:var(--sub); }
@@ -23,25 +26,25 @@ input[type="number"], select{ background: rgba(6,20,28,0.6); border:1px solid rg
 svg{ width:100%; height:auto; display:block; background:transparent; }
 .tile{ transition:fill 110ms ease, transform 110ms ease; cursor:pointer; }
 .tile:hover{ transform:translateY(-1px); filter:brightness(1.06); }
-svg text{ font-weight:600; font-family:Inter, system-ui; font-size:12px; fill:var(--sub); pointer-events:none; }
+svg text{ font-weight:700; font-family:Inter, system-ui; font-size:12px; fill:var(--sub); pointer-events:none; }
 
 /* Modal */
 .ms-modal{ position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,0.5); z-index:1200; }
 .ms-modal[aria-hidden="false"]{ display:grid; }
-.ms-modal-panel{ width:460px; max-width:calc(100% - 40px); background:var(--panel); border-radius:10px; box-shadow:0 14px 40px rgba(0,0,0,0.6); padding:12px; color:var(--text); border:1px solid rgba(255,255,255,0.04); }
+.ms-modal-panel{ width:420px; max-width:calc(100% - 40px); background:var(--panel); border-radius:10px; box-shadow:0 14px 40px rgba(0,0,0,0.6); padding:12px; color:var(--text); border:1px solid var(--muted); }
 .ms-modal-header{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
-.ms-modal-header h3{ margin:0; font-size:16px; color:#e6fbff; }
+.ms-modal-header h3{ margin:0; font-size:16px; color:var(--text); }
 .ms-close{ background:transparent; border:0; color:var(--sub); cursor:pointer; font-size:16px; }
 
 .ms-modal-body{ display:flex; flex-direction:column; gap:10px; padding:6px 0 10px; }
 .ms-row{ display:flex; align-items:center; gap:10px; color:var(--sub); }
 input[type="range"]{ width:160px; -webkit-appearance:none; height:6px; background:linear-gradient(90deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)); border-radius:6px; }
-input[type="range"]::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--accent); box-shadow:0 3px 8px rgba(0,0,0,0.6); border:2px solid rgba(255,255,255,0.06); cursor:pointer; }
+input[type="range"]::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--accent); box-shadow:0 3px 8px rgba(0,0,0,0.12); border:2px solid rgba(255,255,255,0.06); cursor:pointer; }
 
 .ms-modal-footer{ display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }
 
 /* debug overlay */
-.debug-overlay { position:absolute; left:8px; top:64px; pointer-events:none; color: rgba(255,255,255,0.7); font-size:11px; background: rgba(0,0,0,0.36); padding:6px; border-radius:6px; }
+.debug-overlay { position:absolute; left:8px; top:64px; pointer-events:none; color: rgba(255,255,255,0.9); font-size:11px; background: rgba(0,0,0,0.36); padding:6px; border-radius:6px; }
 
 /* responsive */
 @media (max-width:640px){ .ms-modal-panel{ width: calc(100% - 28px); } input[type="range"]{ width:120px; } }
