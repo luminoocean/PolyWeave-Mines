@@ -673,12 +673,6 @@ function initOnceDomReady() {
   currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
   startNewGame();
 }
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initOnceDomReady);
-} else {
-  initOnceDomReady();
-}
 setTimeout(() => {
     initOnceDomReady();
 }, 100);
