@@ -656,23 +656,6 @@ function wireEventHandlers() {
     currentAdjacency = adjacencySelect.value;
   });
 }
-
-// single entrypoint that runs once DOM is ready
-function initOnceDomReady() {
-  bindDomRefs();
-
-  if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !tilingSelect || !adjacencySelect || !applyAdjacencyBtn || !msStatus) {
-    console.error('Initialization failed: one or more controls missing. Ensure index.html has the expected IDs.');
-    return;
-  }
-
-  populateTilingControls();
-  wireEventHandlers();
-
-  currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
-  currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
-  startNewGame();
-}
 setTimeout(() => {
     initOnceDomReady();
 }, 100);
