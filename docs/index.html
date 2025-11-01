@@ -3,28 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>PolyWeave Mines — Minesweeper (MVP)</title>
+  <title>PolyWeave Mines — Minesweeper</title>
   <link rel="stylesheet" href="style.css">
-  <style>
-    /* Minimal inlined layout so this file works immediately if style.css missing */
-    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:#021017; color:#d9f7ff; }
-    .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px; background:linear-gradient(#041219,#031016); border-bottom:1px solid rgba(255,255,255,0.03); }
-    .control-group { display:flex; gap:6px; align-items:center; }
-    label { font-size:13px; color:#bfefff; }
-    input[type="number"], select { background:#052028; border:1px solid rgba(255,255,255,0.04); color:#d9f7ff; padding:6px 8px; border-radius:6px; min-width:72px; }
-    button.ms-btn { padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); background:linear-gradient(#0b1220,#061018); color:#bfefff; cursor:pointer; }
-    button.ms-btn.primary { background:linear-gradient(#0ea5b3,#0b98ad); color:#042426; font-weight:600; }
-    #appRoot { padding:12px; display:block; }
-    #msStatus { padding:8px 12px; font-size:13px; color:#bfefff; }
-    /* ensure modal elements present for settings patch to work if style.css later overrides */
-    .ms-modal { position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,0.5); z-index:1200; }
-    .ms-modal[aria-hidden="false"] { display:grid; }
-    .ms-modal-panel { width:420px; max-width:calc(100% - 40px); background:linear-gradient(#071219,#041018); border-radius:10px; box-shadow:0 12px 40px rgba(0,0,0,0.6); padding:12px; color:#d9f7ff; border:1px solid rgba(255,255,255,0.04); }
-    .ms-modal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
-    .ms-modal-header h3 { margin:0; font-size:16px; font-weight:600; color:#e6fbff; }
-    .ms-row { display:flex; align-items:center; gap:10px; margin:8px 0; }
-    input[type="range"] { width:160px; }
-  </style>
 </head>
 <body>
   <div class="controls" role="region" aria-label="Game controls">
@@ -64,11 +44,9 @@
     </div>
   </div>
 
-  <main id="appRoot" role="main" aria-live="polite">
-    <!-- SVG board will be rendered here by app.js -->
-  </main>
+  <main id="appRoot" role="main" aria-live="polite"></main>
 
-  <!-- Settings modal (full replacement version) -->
+  <!-- Settings modal -->
   <div id="msSettingsModal" class="ms-modal" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="ms-modal-panel" role="document">
       <header class="ms-modal-header">
@@ -76,25 +54,31 @@
         <button id="msSettingsClose" class="ms-close" aria-label="Close settings">✕</button>
       </header>
 
-      <section class="ms-modal-body" style="padding:6px 0 10px;">
+      <section class="ms-modal-body">
+        <div class="ms-row">
+          <label for="sizeSlider">Minefield size (rows & cols)</label>
+          <input id="sizeSlider" type="range" min="6" max="36" value="9">
+          <span id="sizeValue">9</span>
+        </div>
+
         <div class="ms-row">
           <label><input type="checkbox" id="optShowTriShrink"> Enable triangle shrink slider</label>
         </div>
 
         <div class="ms-row" id="triShrinkRow" hidden>
           <label for="triShrinkSlider">Triangle shrink (px)</label>
-          <input id="triShrinkSlider" type="range" min="0" max="24" value="0">
+          <input id="triShrinkSlider" type="range" min="0" max="20" value="0">
           <span id="triShrinkValue">0</span>
         </div>
 
         <div class="ms-row">
-          <label><input type="checkbox" id="optShowGapScale"> Enable horizontal gap slider</label>
+          <label><input type="checkbox" id="optShowGapScale"> Enable horizontal gap scale</label>
         </div>
 
         <div class="ms-row" id="gapScaleRow" hidden>
           <label for="xGapSlider">Horizontal gap scale</label>
-          <input id="xGapSlider" type="range" min="0" max="4" step="0.1" value="1">
-          <span id="xGapValue">1.0</span>
+          <input id="xGapSlider" type="range" min="0.6" max="1.6" step="0.05" value="1">
+          <span id="xGapValue">1.00</span>
         </div>
 
         <div class="ms-row">
@@ -102,21 +86,19 @@
         </div>
 
         <div class="ms-row" id="devControlsRow" hidden>
-          <label><input id="msDebugCheckbox" type="checkbox"> Enable debug overlay</label>
+          <label><input id="msDebugCheckbox" type="checkbox"> Show debug overlay (coords)</label>
         </div>
       </section>
 
-      <footer class="ms-modal-footer" style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+      <footer class="ms-modal-footer">
         <button id="msSettingsApply" class="ms-btn primary">Apply</button>
         <button id="msSettingsCancel" class="ms-btn">Cancel</button>
       </footer>
     </div>
   </div>
 
-  <!-- Load the app script (replace relative path if needed) -->
   <script src="app.js"></script>
 
-  <!-- Local wiring for the Settings UI (keeps settings independent of app.js) -->
   <script>
   (function(){
     const openBtn = document.getElementById('msSettingsBtn');
@@ -124,6 +106,9 @@
     const closeBtn = document.getElementById('msSettingsClose');
     const applyBtn = document.getElementById('msSettingsApply');
     const cancelBtn = document.getElementById('msSettingsCancel');
+
+    const sizeSlider = document.getElementById('sizeSlider');
+    const sizeValue = document.getElementById('sizeValue');
 
     const optTri = document.getElementById('optShowTriShrink');
     const triRow = document.getElementById('triShrinkRow');
@@ -137,6 +122,7 @@
 
     const optExtra = document.getElementById('optShowExtra');
     const devRow = document.getElementById('devControlsRow');
+    const debugCheckbox = document.getElementById('msDebugCheckbox');
 
     function openModal(){ modal.setAttribute('aria-hidden','false'); modal.style.display='grid'; }
     function closeModal(){ modal.setAttribute('aria-hidden','true'); modal.style.display='none'; }
@@ -149,16 +135,24 @@
     if (optGap) optGap.addEventListener('change', ()=> gapRow.hidden = !optGap.checked);
     if (optExtra) optExtra.addEventListener('change', ()=> devRow.hidden = !optExtra.checked);
 
+    if (sizeSlider && sizeValue) {
+      sizeValue.textContent = sizeSlider.value;
+      sizeSlider.addEventListener('input', e => sizeValue.textContent = e.target.value);
+    }
     if (triSlider && triValue) triSlider.addEventListener('input', e=> triValue.textContent = e.target.value);
-    if (gapSlider && gapValue) gapSlider.addEventListener('input', e=> gapValue.textContent = Number(e.target.value).toFixed(1));
+    if (gapSlider && gapValue) gapSlider.addEventListener('input', e=> gapValue.textContent = Number(e.target.value).toFixed(2));
 
     if (applyBtn) applyBtn.addEventListener('click', ()=>{
-      // Controls (triShrinkSlider, xGapSlider) are present in DOM for app.js to read.
+      // apply size to rows/cols inputs
+      const size = Number(sizeSlider.value);
+      document.getElementById('msRows').value = size;
+      document.getElementById('msCols').value = size;
+      // modal stays out of app.js scope, but inputs used by app.js are present
       closeModal();
-      try { if (typeof renderTiledBoard === 'function') renderTiledBoard(); } catch(e){ console.warn('render failed', e); }
+      try { if (typeof window.startNewGame === 'function') window.startNewGame(); } catch(e){ console.warn(e); }
     });
 
-    // accessibility: close on escape
+    // accessibility
     document.addEventListener('keydown', (e)=> { if (e.key === 'Escape') closeModal(); });
   })();
   </script>
