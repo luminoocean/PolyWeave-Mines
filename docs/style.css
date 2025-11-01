@@ -43,7 +43,6 @@ body[data-theme="slate"]{
   --select-bg: rgba(8,12,18,0.85); --select-text:#e6eefb;
 }
 
-/* basics */
 *{ box-sizing:border-box; }
 html,body{ height:100%; margin:0; font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:var(--bg-0); color:var(--text); }
 
@@ -59,7 +58,6 @@ select{ background:var(--select-bg); color:var(--select-text); border-radius:8px
 /* options use OS rendering; add focus/hover for clarity */
 select:focus, select:hover{ outline:2px solid rgba(255,255,255,0.06); }
 
-/* buttons */
 .ms-btn{ font-size:13px; padding:7px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); background:linear-gradient(#0b1220,#061018); color:var(--sub); cursor:pointer; }
 .ms-btn.primary{ background: linear-gradient(var(--accent), #0b98ad); color:#042426; font-weight:600; }
 #msStatus{ padding:8px 12px; font-size:13px; color:var(--sub); }
@@ -86,8 +84,6 @@ input[type="range"]::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; 
 
 .ms-modal-footer{ display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }
 
-/* debug overlay */
 .debug-overlay { position:absolute; left:8px; top:64px; pointer-events:none; color: var(--text); font-size:11px; background: rgba(0,0,0,0.36); padding:6px; border-radius:6px; }
 
-/* responsive */
 @media (max-width:720px){ .ms-modal-panel{ width: calc(100% - 28px); } input[type="range"]{ width:160px; } .controls{ gap:6px; } }
