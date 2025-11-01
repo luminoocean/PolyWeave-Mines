@@ -1,15 +1,16 @@
-// docs/app.js — Full Minesweeper app with Tiling + Adjacency and SVG tile rendering
-// Complete single-file implementation — drop in place of previous app.js
+// docs/app.js — Full Minesweeper app with robust DOM-binding (listeners always query by ID)
+// Drop this file in place of previous app.js. Expects index.html to include elements with IDs:
+// msRows, msCols, msMines, tilingSelect, adjacencySelect, applyAdjacency, newGame, msStatus, appRoot
 
 // --- TILINGS + adjacency presets ---
 const TILINGS = {
   square: {
     label: "Square",
     adjacencies: {
-      "square-8": { label: "Square 8 (all 8)", offsets: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] },
-      "von-neumann": { label: "Von Neumann (4)", offsets: [[-1,0],[1,0],[0,-1],[0,1]] },
-      "knight": { label: "Knight moves", offsets: [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]] },
-      "square-r2": { label: "Square radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() }
+      "square-8":  { label: "Square 8 (all 8)", offsets: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] },
+      "von-neumann":{ label: "Von Neumann (4)", offsets: [[-1,0],[1,0],[0,-1],[0,1]] },
+      "knight":     { label: "Knight moves", offsets: [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]] },
+      "square-r2":  { label: "Square radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() }
     }
   },
 
@@ -33,21 +34,11 @@ const TILINGS = {
 
 // --- Visual constants ---
 const NUMBER_COLORS = {
-  1: '#3ec7ff',
-  2: '#ff6b6b',
-  3: '#ffd27a',
-  4: '#a88cff',
-  5: '#ff9fb3',
-  6: '#7ce7ff',
-  7: '#d3d3d3',
-  8: '#b0c4de'
+  1: '#3ec7ff', 2: '#ff6b6b', 3: '#ffd27a', 4: '#a88cff', 5: '#ff9fb3',
+  6: '#7ce7ff', 7: '#d3d3d3', 8: '#b0c4de'
 };
 
-// --- DOM refs (bound at init time) ---
-let appRoot, msRows, msCols, msMines, newGameBtn, msStatus;
-let tilingSelect, adjacencySelect, applyAdjacencyBtn;
-
-// --- Game state (module-local) ---
+// --- Module-scoped state (not assumed on window) ---
 let gameGrid = null;
 let running = false;
 let firstClick = true;
@@ -59,17 +50,12 @@ function idx(rows, cols, r, c) { return r * cols + c; }
 function inBounds(rows, cols, r, c) { return r >= 0 && r < rows && c >= 0 && c < cols; }
 function triangleOrientation(r, c) { return ((r + c) % 2) === 0; }
 
-// triangle per-cell neighbors depending on orientation
 function triangleOffsetsForCell(r, c, adjKey) {
-  const up = triangleOrientation(r,c);
-  if (adjKey === 'tri-edge') {
-    return up ? [[0,-1],[1,0],[0,1]] : [[0,-1],[-1,0],[0,1]];
-  }
+  const up = triangleOrientation(r, c);
+  if (adjKey === 'tri-edge') return up ? [[0,-1],[1,0],[0,1]] : [[0,-1],[-1,0],[0,1]];
   if (adjKey === 'tri-edge+v') {
-    return up ? [[0,-1],[-1,0],[1,0],[0,1],[-1,1],[1,-1]]
-              : [[0,-1],[-1,0],[1,0],[0,1],[-1,-1],[1,1]];
+    return up ? [[0,-1],[-1,0],[1,0],[0,1],[-1,1],[1,-1]] : [[0,-1],[-1,0],[1,0],[0,1],[-1,-1],[1,1]];
   }
-  // fallback 8-neighborhood
   const arr = [];
   for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++) if (!(dr===0&&dc===0)) arr.push([dr,dc]);
   return arr;
@@ -80,7 +66,7 @@ function getOffsetsFor(tilingKey, adjacencyKey) {
   return (TILINGS[tilingKey] && TILINGS[tilingKey].adjacencies[adjacencyKey] && TILINGS[tilingKey].adjacencies[adjacencyKey].offsets) || [];
 }
 
-// --- Grid creation / counts / mines ---
+// --- Grid API ---
 function createGrid(rows, cols, mines=0) {
   return { rows, cols, mines, cells: Array(rows*cols).fill(0).map(()=>({ mine:false, revealed:false, flagged:false, count:0 })) };
 }
@@ -88,8 +74,8 @@ function createGrid(rows, cols, mines=0) {
 function computeCountsWithAdjacency(grid, tilingKey, adjacencyKey) {
   const { rows, cols, cells } = grid;
   if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) {
-    for (let r=0;r<rows;r++){
-      for (let c=0;c<cols;c++){
+    for (let r=0;r<rows;r++) {
+      for (let c=0;c<cols;c++) {
         const i = idx(rows,cols,r,c);
         if (cells[i].mine) { cells[i].count = -1; continue; }
         const offs = triangleOffsetsForCell(r,c,adjacencyKey);
@@ -106,12 +92,12 @@ function computeCountsWithAdjacency(grid, tilingKey, adjacencyKey) {
   }
 
   const offsets = getOffsetsFor(tilingKey, adjacencyKey);
-  for (let r=0;r<rows;r++){
-    for (let c=0;c<cols;c++){
+  for (let r=0;r<rows;r++) {
+    for (let c=0;c<cols;c++) {
       const i = idx(rows,cols,r,c);
       if (cells[i].mine) { cells[i].count = -1; continue; }
       let cnt = 0;
-      for (const [dr,dc] of offsets){
+      for (const [dr,dc] of offsets) {
         const rr = r + dr, cc = c + dc;
         if (!inBounds(rows,cols,rr,cc)) continue;
         if (cells[idx(rows,cols,rr,cc)].mine) cnt++;
@@ -163,7 +149,7 @@ function placeMines(grid, mineCount, tilingKey, adjacencyKey, safeCell = null) {
   computeCountsWithAdjacency(grid, tilingKey, adjacencyKey);
 }
 
-// --- Reveal / flagging logic ---
+// --- Reveal / Flag / Chord logic ---
 function revealCell(grid, r, c, tilingKey, adjacencyKey) {
   const { rows, cols, cells } = grid;
   if (!inBounds(rows,cols,r,c)) return { changed: [], exploded: false };
@@ -175,7 +161,7 @@ function revealCell(grid, r, c, tilingKey, adjacencyKey) {
   const changed = [];
   const stack = [[r,c]];
 
-  while (stack.length){
+  while (stack.length) {
     const [rr,cc] = stack.pop();
     const i = idx(rows,cols,rr,cc);
     const cell = cells[i];
@@ -183,14 +169,11 @@ function revealCell(grid, r, c, tilingKey, adjacencyKey) {
     cell.revealed = true; changed.push([rr,cc]);
 
     let offs;
-    if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) {
-      offs = triangleOffsetsForCell(rr, cc, adjacencyKey);
-    } else {
-      offs = getOffsetsFor(tilingKey, adjacencyKey);
-    }
+    if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) offs = triangleOffsetsForCell(rr, cc, adjacencyKey);
+    else offs = getOffsetsFor(tilingKey, adjacencyKey);
 
     if (cell.count === 0) {
-      for (const [dr,dc] of offs){
+      for (const [dr,dc] of offs) {
         const nr = rr + dr, nc = cc + dc;
         if (!inBounds(rows,cols,nr,nc)) continue;
         const ni = idx(rows,cols,nr,nc);
@@ -201,7 +184,7 @@ function revealCell(grid, r, c, tilingKey, adjacencyKey) {
   return { changed, exploded: false };
 }
 
-function toggleFlag(grid, r, c){
+function toggleFlag(grid, r, c) {
   const { rows, cols, cells } = grid;
   if (!inBounds(rows,cols,r,c)) return null;
   const i = idx(rows,cols,r,c);
@@ -211,12 +194,12 @@ function toggleFlag(grid, r, c){
   return cell.flagged;
 }
 
-function countFlaggedNeighbors(grid, r, c, tilingKey, adjacencyKey){
+function countFlaggedNeighbors(grid, r, c, tilingKey, adjacencyKey) {
   let offs;
   if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) offs = triangleOffsetsForCell(r,c,adjacencyKey);
   else offs = getOffsetsFor(tilingKey, adjacencyKey);
   let cnt = 0;
-  for (const [dr,dc] of offs){
+  for (const [dr,dc] of offs) {
     const rr = r + dr, cc = c + dc;
     if (!inBounds(grid.rows, grid.cols, rr, cc)) continue;
     if (grid.cells[idx(grid.rows, grid.cols, rr, cc)].flagged) cnt++;
@@ -224,12 +207,12 @@ function countFlaggedNeighbors(grid, r, c, tilingKey, adjacencyKey){
   return cnt;
 }
 
-function revealUnflaggedNeighbors(grid, r, c, tilingKey, adjacencyKey){
+function revealUnflaggedNeighbors(grid, r, c, tilingKey, adjacencyKey) {
   let offs;
   if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) offs = triangleOffsetsForCell(r,c,adjacencyKey);
   else offs = getOffsetsFor(tilingKey, adjacencyKey);
   const toReveal = [];
-  for (const [dr,dc] of offs){
+  for (const [dr,dc] of offs) {
     const rr = r + dr, cc = c + dc;
     if (!inBounds(grid.rows, grid.cols, rr, cc)) continue;
     const cell = grid.cells[idx(grid.rows, grid.cols, rr, cc)];
@@ -238,19 +221,17 @@ function revealUnflaggedNeighbors(grid, r, c, tilingKey, adjacencyKey){
   return toReveal;
 }
 
-function checkWin(grid){
+function checkWin(grid) {
   return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed));
 }
 
-// --- SVG renderer helpers ---
+// --- SVG helpers and center math (triangle/hex exact lattices) ---
 function makeSvgElement(tag, attrs={}) {
   const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
   for (const k in attrs) el.setAttribute(k, String(attrs[k]));
   return el;
 }
-function pointsToStr(points) {
-  return points.map(p => `${p[0]},${p[1]}`).join(' ');
-}
+function pointsToStr(points) { return points.map(p => `${p[0]},${p[1]}`).join(' '); }
 function computeSquarePolygon(cx, cy, size) {
   const s = size/2;
   return [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]];
@@ -272,7 +253,6 @@ function computeHexPolygon(cx, cy, radius, gapPx=1.0) {
   return pts;
 }
 
-// --- Center calculations using exact lattice geometry ---
 function hexCenter(rows, cols, radius) {
   const R = radius;
   const hexWidth = 2 * R;
@@ -323,10 +303,11 @@ function triangleCenter(rows, cols, s) {
   return { centers, w, h: H };
 }
 
-// --- Rendering / UI ---
+// --- Renderers ---
 function renderTiledBoard() {
-  appRoot.innerHTML = '';
-  if (!gameGrid) return;
+  const appRootEl = document.getElementById('appRoot');
+  if (!appRootEl || !gameGrid) return;
+  appRootEl.innerHTML = '';
   const rows = gameGrid.rows, cols = gameGrid.cols;
 
   const requestedCols = Math.max(1, cols);
@@ -334,19 +315,18 @@ function renderTiledBoard() {
   const baseSize = Math.max(14, Math.min(48, rawBase));
   const gapPx = 1.0;
 
-  let centersInfo;
   const tileType = currentTiling || 'square';
-
+  let centersInfo;
   if (tileType === 'hex') centersInfo = hexCenter(rows, cols, baseSize / 2);
   else if (tileType === 'triangle') centersInfo = triangleCenter(rows, cols, baseSize);
   else centersInfo = squareCenter(rows, cols, baseSize);
 
-  const svg = makeSvgElement('svg', {width: centersInfo.w, height: centersInfo.h, viewBox: `0 0 ${centersInfo.w} ${centersInfo.h}`});
+  const svg = makeSvgElement('svg', { width: centersInfo.w, height: centersInfo.h, viewBox: `0 0 ${centersInfo.w} ${centersInfo.h}` });
   svg.style.maxWidth = '100%'; svg.style.height = 'auto'; svg.style.display = 'block'; svg.style.margin = '0 auto';
 
-  for (const cellInfo of centersInfo.centers) {
-    const r = cellInfo.r, c = cellInfo.c;
-    const cx = cellInfo.x, cy = cellInfo.y;
+  for (const ci of centersInfo.centers) {
+    const r = ci.r, c = ci.c;
+    const cx = ci.x, cy = ci.y;
     let pts;
     if (tileType === 'hex') pts = computeHexPolygon(cx, cy, baseSize/2, gapPx);
     else if (tileType === 'triangle') {
@@ -362,54 +342,39 @@ function renderTiledBoard() {
     if (cell.mine && cell.revealed) poly.setAttribute('fill','#550');
     poly.classList.add('tile');
 
-    const label = makeSvgElement('text', {
-      x: cx,
-      y: cy + 4,
-      'text-anchor': 'middle',
-      'font-size': Math.max(12, baseSize/3),
-      'pointer-events': 'none'
-    });
+    const label = makeSvgElement('text', { x: cx, y: cy + 4, 'text-anchor': 'middle', 'font-size': Math.max(12, baseSize/3), 'pointer-events': 'none' });
 
     if (cell.revealed) {
-      if (cell.mine) {
-        label.textContent = '💣';
-        label.setAttribute('fill', '#fff');
-      } else if (cell.count > 0) {
-        label.textContent = String(cell.count);
-        label.setAttribute('fill', NUMBER_COLORS[cell.count] || '#9be7ff');
-      } else {
-        label.textContent = '';
-        label.setAttribute('fill', '#9be7ff');
-      }
+      if (cell.mine) { label.textContent = '💣'; label.setAttribute('fill','#fff'); }
+      else if (cell.count > 0) { label.textContent = String(cell.count); label.setAttribute('fill', NUMBER_COLORS[cell.count] || '#9be7ff'); }
+      else { label.textContent = ''; label.setAttribute('fill', '#9be7ff'); }
     } else if (cell.flagged) {
-      label.textContent = '🚩';
-      label.setAttribute('fill', '#ffb86b');
+      label.textContent = '🚩'; label.setAttribute('fill','#ffb86b');
     } else {
-      label.textContent = '';
-      label.setAttribute('fill', '#9be7ff');
+      label.textContent = ''; label.setAttribute('fill', '#9be7ff');
     }
 
+    // event handlers capture module state and always call module functions (no reliance on external stale refs)
     poly.addEventListener('click', ()=> {
       if (!running) return;
-      const rr = r, cc = c;
-      const cellNow = gameGrid.cells[idx(gameGrid.rows, gameGrid.cols, rr, cc)];
-
+      if (gameGrid.rows !== rows || gameGrid.cols !== cols) return; // safety
+      const cellNow = gameGrid.cells[idx(gameGrid.rows, gameGrid.cols, r, c)];
       if (cellNow.revealed && cellNow.count > 0) {
-        const flagged = countFlaggedNeighbors(gameGrid, rr, cc, currentTiling, currentAdjacency);
+        const flagged = countFlaggedNeighbors(gameGrid, r, c, currentTiling, currentAdjacency);
         if (flagged === cellNow.count) {
-          const toReveal = revealUnflaggedNeighbors(gameGrid, rr, cc, currentTiling, currentAdjacency);
+          const toReveal = revealUnflaggedNeighbors(gameGrid, r, c, currentTiling, currentAdjacency);
           let exploded = false;
-          for (const [ar, ac] of toReveal) {
+          for (const [ar,ac] of toReveal) {
             const res = revealCell(gameGrid, ar, ac, currentTiling, currentAdjacency);
             if (res.exploded) exploded = true;
           }
           if (exploded) {
             running = false;
             gameGrid.cells.forEach(cl => { if (cl.mine) cl.revealed = true; });
-            msStatus.textContent = 'BOOM — a mine was revealed during chord';
+            document.getElementById('msStatus').textContent = 'BOOM — a mine was revealed during chord';
           } else {
-            if (checkWin(gameGrid)) { running = false; msStatus.textContent = 'You win!'; }
-            else msStatus.textContent = 'Playing...';
+            if (checkWin(gameGrid)) { running = false; document.getElementById('msStatus').textContent = 'You win!'; }
+            else document.getElementById('msStatus').textContent = 'Playing...';
           }
           renderTiledBoard();
           return;
@@ -417,18 +382,19 @@ function renderTiledBoard() {
         return;
       }
 
-      if (firstClick){
-        placeMines(gameGrid, Number(msMines.value), currentTiling, currentAdjacency, [rr,cc]);
+      if (firstClick) {
+        const minesVal = Number((document.getElementById('msMines')||{}).value || 10);
+        placeMines(gameGrid, minesVal, currentTiling, currentAdjacency, [r,c]);
         firstClick = false;
       }
-      const res = revealCell(gameGrid, rr, cc, currentTiling, currentAdjacency);
-      if (res.exploded){
+      const res = revealCell(gameGrid, r, c, currentTiling, currentAdjacency);
+      if (res.exploded) {
         running = false;
         gameGrid.cells.forEach(cl => { if (cl.mine) cl.revealed = true; });
-        msStatus.textContent = 'BOOM — you hit a mine';
+        document.getElementById('msStatus').textContent = 'BOOM — you hit a mine';
       } else {
-        if (checkWin(gameGrid)) { running = false; msStatus.textContent = 'You win!'; }
-        else msStatus.textContent = 'Playing...';
+        if (checkWin(gameGrid)) { running = false; document.getElementById('msStatus').textContent = 'You win!'; }
+        else document.getElementById('msStatus').textContent = 'Playing...';
       }
       renderTiledBoard();
     });
@@ -437,8 +403,8 @@ function renderTiledBoard() {
       e.preventDefault();
       if (!running) return;
       toggleFlag(gameGrid, r, c);
-      if (checkWin(gameGrid)){ running = false; msStatus.textContent = 'You win!'; }
-      else msStatus.textContent = 'Playing...';
+      if (checkWin(gameGrid)) { running = false; document.getElementById('msStatus').textContent = 'You win!'; }
+      else document.getElementById('msStatus').textContent = 'Playing...';
       renderTiledBoard();
     });
 
@@ -446,13 +412,13 @@ function renderTiledBoard() {
     svg.appendChild(label);
   }
 
-  appRoot.appendChild(svg);
+  appRootEl.appendChild(svg);
 }
 
-// fallback table renderer for square or small layouts
 function renderTableBoard() {
-  appRoot.innerHTML = '';
-  if (!gameGrid) return;
+  const appRootEl = document.getElementById('appRoot');
+  if (!appRootEl || !gameGrid) return;
+  appRootEl.innerHTML = '';
   const tbl = document.createElement('table');
   tbl.className = 'mboard';
   const { rows, cols, cells } = gameGrid;
@@ -473,41 +439,34 @@ function renderTableBoard() {
           if (cell.count > 0) {
             td.textContent = String(cell.count);
             td.style.color = NUMBER_COLORS[cell.count] || '#9be7ff';
-          } else {
-            td.textContent = '';
-            td.style.color = '';
-          }
+          } else td.textContent = '';
         }
       } else if (cell.flagged) {
         td.classList.add('flagged');
         td.textContent = '🚩';
         td.style.color = '#ffb86b';
-      } else {
-        td.textContent = '';
-        td.style.color = '';
-      }
+      } else td.textContent = '';
 
       td.addEventListener('click', ()=> {
         if (!running) return;
         const rr = Number(td.dataset.r), cc = Number(td.dataset.c);
         const cellNow = gameGrid.cells[idx(gameGrid.rows, gameGrid.cols, rr, cc)];
-
         if (cellNow.revealed && cellNow.count > 0) {
           const flagged = countFlaggedNeighbors(gameGrid, rr, cc, currentTiling, currentAdjacency);
           if (flagged === cellNow.count) {
             const toReveal = revealUnflaggedNeighbors(gameGrid, rr, cc, currentTiling, currentAdjacency);
             let exploded = false;
-            for (const [ar, ac] of toReveal) {
+            for (const [ar,ac] of toReveal) {
               const res = revealCell(gameGrid, ar, ac, currentTiling, currentAdjacency);
               if (res.exploded) exploded = true;
             }
             if (exploded) {
               running = false;
               gameGrid.cells.forEach(cl => { if (cl.mine) cl.revealed = true; });
-              msStatus.textContent = 'BOOM — a mine was revealed during chord';
+              document.getElementById('msStatus').textContent = 'BOOM — a mine was revealed during chord';
             } else {
-              if (checkWin(gameGrid)) { running = false; msStatus.textContent = 'You win!'; }
-              else msStatus.textContent = 'Playing...';
+              if (checkWin(gameGrid)) { running = false; document.getElementById('msStatus').textContent = 'You win!'; }
+              else document.getElementById('msStatus').textContent = 'Playing...';
             }
             renderTableBoard();
             return;
@@ -515,18 +474,19 @@ function renderTableBoard() {
           return;
         }
 
-        if (firstClick){
-          placeMines(gameGrid, Number(msMines.value), currentTiling, currentAdjacency, [rr,cc]);
+        if (firstClick) {
+          const minesVal = Number((document.getElementById('msMines')||{}).value || 10);
+          placeMines(gameGrid, minesVal, currentTiling, currentAdjacency, [rr,cc]);
           firstClick = false;
         }
         const res = revealCell(gameGrid, rr, cc, currentTiling, currentAdjacency);
-        if (res.exploded){
+        if (res.exploded) {
           running = false;
           gameGrid.cells.forEach(cl => { if (cl.mine) cl.revealed = true; });
-          msStatus.textContent = 'BOOM — you hit a mine';
+          document.getElementById('msStatus').textContent = 'BOOM — you hit a mine';
         } else {
-          if (checkWin(gameGrid)) { running = false; msStatus.textContent = 'You win!'; }
-          else msStatus.textContent = 'Playing...';
+          if (checkWin(gameGrid)) { running = false; document.getElementById('msStatus').textContent = 'You win!'; }
+          else document.getElementById('msStatus').textContent = 'Playing...';
         }
         renderTableBoard();
       });
@@ -536,8 +496,8 @@ function renderTableBoard() {
         if (!running) return;
         const rr = Number(td.dataset.r), cc = Number(td.dataset.c);
         toggleFlag(gameGrid, rr, cc);
-        if (checkWin(gameGrid)){ running = false; msStatus.textContent = 'You win!'; }
-        else msStatus.textContent = 'Playing...';
+        if (checkWin(gameGrid)){ running = false; document.getElementById('msStatus').textContent = 'You win!'; }
+        else document.getElementById('msStatus').textContent = 'Playing...';
         renderTableBoard();
       });
 
@@ -545,148 +505,174 @@ function renderTableBoard() {
     }
     tbl.appendChild(tr);
   }
-  appRoot.appendChild(tbl);
+  appRootEl.appendChild(tbl);
 }
 
-// --- Controls / wiring ---
+// --- Controls wiring: robust handlers that always query DOM by ID (no stale refs) ---
 function startNewGame() {
-  const rows = Math.max(3, Number(msRows.value || 9));
-  const cols = Math.max(3, Number(msCols.value || 9));
-  let mines = Math.max(1, Number(msMines.value || 10));
+  const rows = Math.max(3, Number((document.getElementById('msRows')||{value:9}).value || 9));
+  const cols = Math.max(3, Number((document.getElementById('msCols')||{value:9}).value || 9));
+  let mines = Math.max(1, Number((document.getElementById('msMines')||{value:10}).value || 10));
   mines = Math.min(mines, rows*cols - 1);
 
   gameGrid = createGrid(rows, cols, mines);
   running = true;
   firstClick = true;
-  msStatus.textContent = 'Ready — first click is safe';
+  const statusEl = document.getElementById('msStatus');
+  if (statusEl) statusEl.textContent = 'Ready — first click is safe';
 
-  if (!currentTiling) {
-    currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
-    currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
-  }
+  // read tiling/adjacency directly from DOM (guaranteed fresh)
+  currentTiling = (document.getElementById('tilingSelect') || {}).value || Object.keys(TILINGS)[0];
+  currentAdjacency = (document.getElementById('adjacencySelect') || {}).value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
+
+  // compute counts with chosen adjacency
+  computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
 
   if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
+
+  // expose debug-friendly window refs (optional, small surface)
+  try {
+    window.gameGrid = gameGrid;
+    window.currentTiling = currentTiling;
+    window.currentAdjacency = currentAdjacency;
+    window.TILINGS = TILINGS;
+  } catch(e){}
 }
 
 function populateTilingControls() {
-  tilingSelect.innerHTML = '';
+  const sel = document.getElementById('tilingSelect');
+  const adjSel = document.getElementById('adjacencySelect');
+  if (!sel || !adjSel) return;
+
+  sel.innerHTML = '';
   for (const key of Object.keys(TILINGS)) {
     const opt = document.createElement('option');
     opt.value = key; opt.textContent = TILINGS[key].label;
-    tilingSelect.appendChild(opt);
+    sel.appendChild(opt);
   }
 
-  function populateAdj(tilingKey){
-    adjacencySelect.innerHTML = '';
-    const adj = TILINGS[tilingKey].adjacencies || {};
+  function populateAdj(tilingKey) {
+    adjSel.innerHTML = '';
+    const adj = (TILINGS[tilingKey] && TILINGS[tilingKey].adjacencies) || {};
     for (const aKey of Object.keys(adj)) {
       const o = document.createElement('option');
       o.value = aKey; o.textContent = adj[aKey].label;
-      adjacencySelect.appendChild(o);
+      adjSel.appendChild(o);
     }
-    if (adjacencySelect.options.length) adjacencySelect.selectedIndex = 0;
+    if (adjSel.options.length) adjSel.selectedIndex = 0;
   }
 
-  const initial = tilingSelect.value || Object.keys(TILINGS)[0];
+  const initial = sel.value || Object.keys(TILINGS)[0];
   populateAdj(initial);
   currentTiling = initial;
-  currentAdjacency = adjacencySelect.value || adjacencySelect.options[0].value;
+  currentAdjacency = adjSel.value || (adjSel.options[0] && adjSel.options[0].value);
 
-  // attach a change handler that updates adjacency and restarts/recomputes
-  tilingSelect.addEventListener('change', (e) => {
-    const newTiling = e.target.value;
+  // Attach robust handlers: remove duplicates first to avoid multiple attachments if init runs twice
+  sel.removeEventListener('__robust_change', sel.__robust_change_handler || (()=>{})); // noop removal safe
+  adjSel.removeEventListener('__robust_change', adjSel.__robust_change_handler || (()=>{}));
+
+  // change handler for tiling: always query DOM by ID and then apply logic
+  const tilingHandler = function(e) {
+    const newTiling = (document.getElementById('tilingSelect')||{}).value || e && e.target && e.target.value;
     populateAdj(newTiling);
-
     currentTiling = newTiling;
-    currentAdjacency = adjacencySelect.value;
+    currentAdjacency = (document.getElementById('adjacencySelect')||{}).value || currentAdjacency;
 
-    // mirror to window for debug/console compatibility
-    window.currentTiling = currentTiling;
-    window.currentAdjacency = currentAdjacency;
+    // update status
+    const statusEl = document.getElementById('msStatus');
+    if (statusEl) {
+      const label = (TILINGS[currentTiling] && TILINGS[currentTiling].label) || currentTiling;
+      const adjLabel = (TILINGS[currentTiling] && TILINGS[currentTiling].adjacencies && TILINGS[currentTiling].adjacencies[currentAdjacency] && TILINGS[currentTiling].adjacencies[currentAdjacency].label) || currentAdjacency;
+      statusEl.textContent = `Tiling: ${label} (Adjacency: ${adjLabel})`;
+    }
 
-    if (msStatus) msStatus.textContent = `Tiling: ${TILINGS[currentTiling].label} (Adjacency: ${TILINGS[currentTiling].adjacencies[currentAdjacency].label})`;
-
+    // prefer recompute if a game exists otherwise start new
     if (gameGrid && typeof computeCountsWithAdjacency === 'function') {
       try {
         computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
         if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
       } catch (err) {
-        console.error('Error recomputing counts after tiling change', err);
+        console.error('Error on tiling change recompute:', err);
         startNewGame();
       }
-    } else {
-      startNewGame();
-    }
-  });
+    } else startNewGame();
 
-  adjacencySelect.addEventListener('change', ()=> {
-    currentAdjacency = adjacencySelect.value;
-    window.currentAdjacency = currentAdjacency;
+    // mirror to window for console debugging
+    try { window.currentTiling = currentTiling; window.currentAdjacency = currentAdjacency; } catch(e){}
+  };
+
+  tilingHandler.__robust_marker = true;
+  sel.__robust_change_handler = tilingHandler;
+  sel.addEventListener('change', tilingHandler);
+
+  // adjacency change handler
+  const adjacencyHandler = function(e) {
+    currentAdjacency = (document.getElementById('adjacencySelect')||{}).value || (e && e.target && e.target.value);
+    try { window.currentAdjacency = currentAdjacency; } catch(e){}
     if (gameGrid) {
-      computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
-      if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
+      try {
+        computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
+        if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
+      } catch(err) {
+        console.error('Error recomputing after adjacency change', err);
+      }
     }
-  });
+  };
+  adjacencyHandler.__robust_marker = true;
+  adjSel.__robust_change_handler = adjacencyHandler;
+  adjSel.addEventListener('change', adjacencyHandler);
 }
 
-// --- DOM binding and init ---
-function bindDomRefs() {
-  appRoot = document.getElementById('appRoot');
-  msRows = document.getElementById('msRows');
-  msCols = document.getElementById('msCols');
-  msMines = document.getElementById('msMines');
-  newGameBtn = document.getElementById('newGame');
-  msStatus = document.getElementById('msStatus');
-
-  tilingSelect = document.getElementById('tilingSelect');
-  adjacencySelect = document.getElementById('adjacencySelect');
-  applyAdjacencyBtn = document.getElementById('applyAdjacency');
+// apply adjacency button behavior (wired by DOM id)
+function applyAdjacencyAction() {
+  const sel = document.getElementById('tilingSelect');
+  const adjSel = document.getElementById('adjacencySelect');
+  if (!sel || !adjSel) return;
+  currentTiling = sel.value;
+  currentAdjacency = adjSel.value;
+  try { window.currentTiling = currentTiling; window.currentAdjacency = currentAdjacency; } catch(e){}
+  if (gameGrid) {
+    computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
+    if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
+    const ms = document.getElementById('msStatus'); if (ms) ms.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
+  } else {
+    const ms = document.getElementById('msStatus'); if (ms) ms.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
+  }
 }
 
-function wireEventHandlers() {
-  applyAdjacencyBtn.addEventListener('click', ()=> {
-    currentTiling = tilingSelect.value;
-    currentAdjacency = adjacencySelect.value;
-    window.currentTiling = currentTiling;
-    window.currentAdjacency = currentAdjacency;
-    if (gameGrid) {
-      computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
-      if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
-      msStatus.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
-    } else {
-      msStatus.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
-    }
-  });
+// newGame action wrapper
+function newGameAction() { startNewGame(); }
 
-  newGameBtn.addEventListener('click', ()=> startNewGame());
-}
-
+// --- Global one-time init that binds DOM hooks by ID and wires actions ---
 function initOnceDomReady() {
-  bindDomRefs();
+  // wire controls by ID to avoid stale module-captured references
+  const applyBtn = document.getElementById('applyAdjacency');
+  const newBtn = document.getElementById('newGame');
+  // populate selects and attach internal handlers
+  populateTilingControls();
 
-  if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !tilingSelect || !adjacencySelect || !applyAdjacencyBtn || !msStatus) {
-    console.error('Initialization failed: one or more controls missing. Ensure index.html has the expected IDs.');
-    return;
+  // wire apply and new game with id-based listeners (remove previous to avoid duplicates)
+  if (applyBtn) {
+    applyBtn.removeEventListener('click', applyAdjacencyAction);
+    applyBtn.addEventListener('click', applyAdjacencyAction);
+  }
+  if (newBtn) {
+    newBtn.removeEventListener('click', newGameAction);
+    newBtn.addEventListener('click', newGameAction);
   }
 
-  populateTilingControls();
-  wireEventHandlers();
+  // ensure msStatus exists
+  const ms = document.getElementById('msStatus');
+  if (ms) ms.textContent = 'Ready — select tiling and click New Game';
 
-  currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
-  currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
+  // create initial game
   startNewGame();
-
-  // expose core state for console/debug convenience
-  window.TILINGS = TILINGS;
-  window.gameGrid = gameGrid;
-  window.currentTiling = currentTiling;
-  window.currentAdjacency = currentAdjacency;
 }
 
-// ensure init runs once DOM is ready
+// run once DOM is ready; use both DOMContentLoaded and an immediate attempt to handle odd load ordering
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initOnceDomReady);
 } else {
-  // small timeout guard for environments with odd loading timing
+  // immediate but defer to end-of-call-stack to let other scripts finish
   setTimeout(initOnceDomReady, 0);
 }
