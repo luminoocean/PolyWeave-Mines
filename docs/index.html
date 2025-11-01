@@ -2,87 +2,165 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>PolyWeave Mines — Minesweeper (MVP)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="stylesheet" href="./style.css" />
+  <title>PolyWeave Mines — Minesweeper (MVP)</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Minimal inlined layout so this file works immediately if style.css missing */
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:#021017; color:#d9f7ff; }
+    .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px; background:linear-gradient(#041219,#031016); border-bottom:1px solid rgba(255,255,255,0.03); }
+    .control-group { display:flex; gap:6px; align-items:center; }
+    label { font-size:13px; color:#bfefff; }
+    input[type="number"], select { background:#052028; border:1px solid rgba(255,255,255,0.04); color:#d9f7ff; padding:6px 8px; border-radius:6px; min-width:72px; }
+    button.ms-btn { padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); background:linear-gradient(#0b1220,#061018); color:#bfefff; cursor:pointer; }
+    button.ms-btn.primary { background:linear-gradient(#0ea5b3,#0b98ad); color:#042426; font-weight:600; }
+    #appRoot { padding:12px; display:block; }
+    #msStatus { padding:8px 12px; font-size:13px; color:#bfefff; }
+    /* ensure modal elements present for settings patch to work if style.css later overrides */
+    .ms-modal { position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,0.5); z-index:1200; }
+    .ms-modal[aria-hidden="false"] { display:grid; }
+    .ms-modal-panel { width:420px; max-width:calc(100% - 40px); background:linear-gradient(#071219,#041018); border-radius:10px; box-shadow:0 12px 40px rgba(0,0,0,0.6); padding:12px; color:#d9f7ff; border:1px solid rgba(255,255,255,0.04); }
+    .ms-modal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+    .ms-modal-header h3 { margin:0; font-size:16px; font-weight:600; color:#e6fbff; }
+    .ms-row { display:flex; align-items:center; gap:10px; margin:8px 0; }
+    input[type="range"] { width:160px; }
+  </style>
 </head>
 <body>
-  <main>
-    <header class="site-header">
-      <h1>PolyWeave Mines</h1>
-      <p class="muted">2D Minesweeper with configurable tilings and adjacency rules</p>
-    </header>
+  <div class="controls" role="region" aria-label="Game controls">
+    <div class="control-group">
+      <label for="msRows">Rows</label>
+      <input id="msRows" type="number" min="3" max="60" value="9" />
+    </div>
 
-    <section id="controls" class="controls">
-      <div class="controls-row">
-        <label>Rows <input id="msRows" type="number" value="9" min="3"></label>
-        <label>Cols <input id="msCols" type="number" value="9" min="3"></label>
-        <label>Mines <input id="msMines" type="number" value="10" min="1"></label>
+    <div class="control-group">
+      <label for="msCols">Cols</label>
+      <input id="msCols" type="number" min="3" max="60" value="9" />
+    </div>
 
-        <label>Tiling
-          <select id="tilingSelect"></select>
-        </label>
+    <div class="control-group">
+      <label for="msMines">Mines</label>
+      <input id="msMines" type="number" min="1" value="10" />
+    </div>
 
-        <label>Adjacency
-          <select id="adjacencySelect"></select>
-        </label>
-        <button id="applyAdjacency">Apply adjacency</button>
-        <button id="newGame">New Game</button>
-        <div id="msStatus" class="muted status">Ready</div>
-        <!-- Settings button and modal (paste beside your existing controls) -->
-<button id="msSettingsBtn" class="ms-btn">Settings</button>
+    <div class="control-group">
+      <label for="tilingSelect">Tiling</label>
+      <select id="tilingSelect" aria-label="Tiling"></select>
+    </div>
 
-<div id="msSettingsModal" class="ms-modal" aria-hidden="true" role="dialog" aria-modal="true">
-  <div class="ms-modal-panel" role="document">
-    <header class="ms-modal-header">
-      <h3>Game settings</h3>
-      <button id="msSettingsClose" class="ms-close" aria-label="Close settings">✕</button>
-    </header>
+    <div class="control-group">
+      <label for="adjacencySelect">Adjacency</label>
+      <select id="adjacencySelect" aria-label="Adjacency"></select>
+    </div>
 
-    <section class="ms-modal-body">
-      <div class="ms-row">
-        <label><input type="checkbox" id="optShowTriShrink"> Enable triangle shrink slider</label>
-      </div>
+    <div class="control-group">
+      <button id="applyAdjacency" class="ms-btn">Apply adjacency</button>
+      <button id="newGame" class="ms-btn primary">New Game</button>
+    </div>
 
-      <div class="ms-row ms-toggle-row" id="triShrinkRow" hidden>
-        <label for="triShrinkSlider">Triangle shrink (px)</label>
-        <input id="triShrinkSlider" type="range" min="0" max="24" value="0">
-        <span id="triShrinkValue">0</span>
-      </div>
-
-      <div class="ms-row">
-        <label><input type="checkbox" id="optShowGapScale"> Enable horizontal gap slider</label>
-      </div>
-
-      <div class="ms-row ms-toggle-row" id="gapScaleRow" hidden>
-        <label for="xGapSlider">Horizontal gap scale</label>
-        <input id="xGapSlider" type="range" min="0" max="4" step="0.1" value="1">
-        <span id="xGapValue">1.0</span>
-      </div>
-
-      <div class="ms-row">
-        <label><input type="checkbox" id="optShowExtra"> Show developer controls</label>
-      </div>
-
-      <div class="ms-row" id="devControlsRow" hidden>
-        <label for="msDebugCheckbox"><input id="msDebugCheckbox" type="checkbox"> Enable debug overlay</label>
-      </div>
-    </section>
-
-    <footer class="ms-modal-footer">
-      <button id="msSettingsApply" class="ms-btn primary">Apply</button>
-      <button id="msSettingsCancel" class="ms-btn">Cancel</button>
-    </footer>
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+      <div id="msStatus">Ready</div>
+      <button id="msSettingsBtn" class="ms-btn" title="Open settings">Settings</button>
+    </div>
   </div>
-</div>
-      </div>
-    </section>
 
-    <section id="appRoot"></section>
-
-    <footer class="footer muted">Left-click reveal; right-click flag. Click a revealed number to chord when flagged neighbors match the number.</footer>
+  <main id="appRoot" role="main" aria-live="polite">
+    <!-- SVG board will be rendered here by app.js -->
   </main>
 
-  <script type="module" src="./app.js"></script>
+  <!-- Settings modal (full replacement version) -->
+  <div id="msSettingsModal" class="ms-modal" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="ms-modal-panel" role="document">
+      <header class="ms-modal-header">
+        <h3>Game settings</h3>
+        <button id="msSettingsClose" class="ms-close" aria-label="Close settings">✕</button>
+      </header>
+
+      <section class="ms-modal-body" style="padding:6px 0 10px;">
+        <div class="ms-row">
+          <label><input type="checkbox" id="optShowTriShrink"> Enable triangle shrink slider</label>
+        </div>
+
+        <div class="ms-row" id="triShrinkRow" hidden>
+          <label for="triShrinkSlider">Triangle shrink (px)</label>
+          <input id="triShrinkSlider" type="range" min="0" max="24" value="0">
+          <span id="triShrinkValue">0</span>
+        </div>
+
+        <div class="ms-row">
+          <label><input type="checkbox" id="optShowGapScale"> Enable horizontal gap slider</label>
+        </div>
+
+        <div class="ms-row" id="gapScaleRow" hidden>
+          <label for="xGapSlider">Horizontal gap scale</label>
+          <input id="xGapSlider" type="range" min="0" max="4" step="0.1" value="1">
+          <span id="xGapValue">1.0</span>
+        </div>
+
+        <div class="ms-row">
+          <label><input type="checkbox" id="optShowExtra"> Show developer controls</label>
+        </div>
+
+        <div class="ms-row" id="devControlsRow" hidden>
+          <label><input id="msDebugCheckbox" type="checkbox"> Enable debug overlay</label>
+        </div>
+      </section>
+
+      <footer class="ms-modal-footer" style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+        <button id="msSettingsApply" class="ms-btn primary">Apply</button>
+        <button id="msSettingsCancel" class="ms-btn">Cancel</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Load the app script (replace relative path if needed) -->
+  <script src="app.js"></script>
+
+  <!-- Local wiring for the Settings UI (keeps settings independent of app.js) -->
+  <script>
+  (function(){
+    const openBtn = document.getElementById('msSettingsBtn');
+    const modal = document.getElementById('msSettingsModal');
+    const closeBtn = document.getElementById('msSettingsClose');
+    const applyBtn = document.getElementById('msSettingsApply');
+    const cancelBtn = document.getElementById('msSettingsCancel');
+
+    const optTri = document.getElementById('optShowTriShrink');
+    const triRow = document.getElementById('triShrinkRow');
+    const triSlider = document.getElementById('triShrinkSlider');
+    const triValue = document.getElementById('triShrinkValue');
+
+    const optGap = document.getElementById('optShowGapScale');
+    const gapRow = document.getElementById('gapScaleRow');
+    const gapSlider = document.getElementById('xGapSlider');
+    const gapValue = document.getElementById('xGapValue');
+
+    const optExtra = document.getElementById('optShowExtra');
+    const devRow = document.getElementById('devControlsRow');
+
+    function openModal(){ modal.setAttribute('aria-hidden','false'); modal.style.display='grid'; }
+    function closeModal(){ modal.setAttribute('aria-hidden','true'); modal.style.display='none'; }
+
+    if (openBtn) openBtn.addEventListener('click', openModal);
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+
+    if (optTri) optTri.addEventListener('change', ()=> triRow.hidden = !optTri.checked);
+    if (optGap) optGap.addEventListener('change', ()=> gapRow.hidden = !optGap.checked);
+    if (optExtra) optExtra.addEventListener('change', ()=> devRow.hidden = !optExtra.checked);
+
+    if (triSlider && triValue) triSlider.addEventListener('input', e=> triValue.textContent = e.target.value);
+    if (gapSlider && gapValue) gapSlider.addEventListener('input', e=> gapValue.textContent = Number(e.target.value).toFixed(1));
+
+    if (applyBtn) applyBtn.addEventListener('click', ()=>{
+      // Controls (triShrinkSlider, xGapSlider) are present in DOM for app.js to read.
+      closeModal();
+      try { if (typeof renderTiledBoard === 'function') renderTiledBoard(); } catch(e){ console.warn('render failed', e); }
+    });
+
+    // accessibility: close on escape
+    document.addEventListener('keydown', (e)=> { if (e.key === 'Escape') closeModal(); });
+  })();
+  </script>
 </body>
 </html>
