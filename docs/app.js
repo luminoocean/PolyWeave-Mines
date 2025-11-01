@@ -291,7 +291,7 @@ function hexCenter(rows, cols, radius) {
   const GAP = 1.04; // spacing multiplier >1 spreads hexes slightly apart
   const hexWidth = 2 * radius;
   const hexHeight = Math.sqrt(3) * radius;
-  const xStep = 0.75 * hexWidth * GAP;
+  const xStep = hexWidth * GAP;
   const yStep = hexHeight * GAP;
   const centers = [];
   const PAD = 8;
@@ -323,7 +323,7 @@ function triangleCenter(rows, cols, s) {
   const GAP = 1.03;
   const h = Math.sqrt(3)/2 * s;
   const centers = [];
-  const xStep = s * 0.5 * GAP;
+  const xStep = s * GAP;
   const yStep = h * 0.5 * GAP;
   const PAD = 8;
   for (let r=0;r<rows;r++){
