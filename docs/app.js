@@ -1,11 +1,10 @@
-// docs/app.js — Full Minesweeper app with Tiling + Adjacency and SVG tile rendering
+// docs/app.js — Fixed full Minesweeper app with Tiling + Adjacency and correct SVG rendering
 // Replace your existing docs/app.js with this file exactly.
 // Expects controls in docs/index.html with IDs:
 // msRows, msCols, msMines, tilingSelect, adjacencySelect, applyAdjacency, newGame, msStatus, appRoot
 
 // --- TILINGS + adjacency presets (tilings that repeat infinitely) ---
 const TILINGS = {
-  // Square tiling
   "square": {
     label: "Square",
     adjacencies: {
@@ -16,17 +15,15 @@ const TILINGS = {
     }
   },
 
-  // Triangle tiling (regular triangular lattice approximated on row/col)
   "triangle": {
     label: "Triangle",
     adjacencies: {
-      "tri-edge": { label: "Triangle edge neighbors (3)", offsets: [[-1,0],[0,-1],[0,1]] },
-      "tri-edge+v": { label: "Triangle edges+vertices (6)", offsets: [[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0]] },
+      "tri-edge": { label: "Triangle edge neighbors (3)", offsets: null },        // per-cell
+      "tri-edge+v": { label: "Triangle edges+vertices (6)", offsets: null },    // per-cell
       "tri-r2": { label: "Triangle radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() }
     }
   },
 
-  // Hex tiling (approximated with odd-r pointy-top offsets)
   "hex": {
     label: "Hexagon",
     adjacencies: {
@@ -36,7 +33,7 @@ const TILINGS = {
   }
 };
 
-// --- DOM refs (must match docs/index.html) ---
+// --- DOM refs ---
 const appRoot = document.getElementById('appRoot');
 const msRows = document.getElementById('msRows');
 const msCols = document.getElementById('msCols');
@@ -56,8 +53,34 @@ if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !tilingSelect |
 function idx(rows, cols, r, c){ return r*cols + c; }
 function inBounds(rows, cols, r, c){ return r>=0 && r<rows && c>=0 && c<cols; }
 
-// return offsets[] for tiling+adjacency
+// triangle orientation: returns true if upward for given center (r,c)
+function triangleOrientation(r, c) {
+  return ((r + c) % 2) === 0;
+}
+
+// returns per-cell offsets for triangle adjacency based on orientation
+function triangleOffsetsForCell(r, c, adjKey) {
+  const up = triangleOrientation(r, c);
+  if (adjKey === 'tri-edge') {
+    // edge-sharing adjacency: three neighbors
+    // these offsets correspond to the center-grid packing used by triangleCenter()
+    return up ? [[0,-1],[1,0],[0,1]]   // left, down-right, right
+              : [[0,-1],[-1,0],[0,1]]; // left, up-left, right
+  }
+  if (adjKey === 'tri-edge+v') {
+    // edges + vertex-sharing neighbors (6); pattern chosen to approximate local connectivity
+    return up ? [[0,-1],[-1,0],[1,0],[0,1],[-1,1],[1,-1]]
+              : [[0,-1],[-1,0],[1,0],[0,1],[-1,-1],[1,1]];
+  }
+  // fallback symmetric neighborhood
+  const arr = [];
+  for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++) if (!(dr===0&&dc===0)) arr.push([dr,dc]);
+  return arr;
+}
+
+// return offsets[] for tiling+adjacency; triangle may return null (means per-cell)
 function getOffsetsFor(tilingKey, adjacencyKey) {
+  if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) return null;
   return (TILINGS[tilingKey] && TILINGS[tilingKey].adjacencies[adjacencyKey] && TILINGS[tilingKey].adjacencies[adjacencyKey].offsets) || [];
 }
 
@@ -67,8 +90,27 @@ function createGrid(rows, cols, mines=0){
 }
 
 function computeCountsWithAdjacency(grid, tilingKey, adjacencyKey){
-  const offsets = getOffsetsFor(tilingKey, adjacencyKey);
   const { rows, cols, cells } = grid;
+  if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) {
+    // per-cell offsets
+    for (let r=0;r<rows;r++){
+      for (let c=0;c<cols;c++){
+        const i = idx(rows,cols,r,c);
+        if (cells[i].mine) { cells[i].count = -1; continue; }
+        const offs = triangleOffsetsForCell(r,c,adjacencyKey);
+        let cnt = 0;
+        for (const [dr,dc] of offs) {
+          const rr = r + dr, cc = c + dc;
+          if (!inBounds(rows,cols,rr,cc)) continue;
+          if (cells[idx(rows,cols,rr,cc)].mine) cnt++;
+        }
+        cells[i].count = cnt;
+      }
+    }
+    return;
+  }
+
+  const offsets = getOffsetsFor(tilingKey, adjacencyKey);
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
       const i = idx(rows,cols,r,c);
@@ -86,7 +128,6 @@ function computeCountsWithAdjacency(grid, tilingKey, adjacencyKey){
 
 function placeMines(grid, mineCount, tilingKey, adjacencyKey, safeCell = null){
   const { rows, cols, cells } = grid;
-  // reset cell states
   cells.forEach(cell => { cell.mine = false; cell.count = 0; cell.revealed = false; cell.flagged = false; });
   const total = rows * cols;
   const perm = Array.from({ length: total }, (_,i) => i);
@@ -98,13 +139,21 @@ function placeMines(grid, mineCount, tilingKey, adjacencyKey, safeCell = null){
   const forbidden = new Set();
   if (safeCell) {
     const [sr, sc] = safeCell;
-    const offsets = getOffsetsFor(tilingKey, adjacencyKey);
-    // protect clicked cell and its adjacency neighbors
-    [[0,0]].concat(offsets).forEach(([dr,dc]) => {
-      const rr = sr + dr, cc = sc + dc;
-      if (!inBounds(rows,cols,rr,cc)) return;
-      forbidden.add(idx(rows,cols,rr,cc));
-    });
+    if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) {
+      const offs = triangleOffsetsForCell(sr, sc, adjacencyKey).concat([[0,0]]);
+      for (const [dr,dc] of offs) {
+        const rr = sr + dr, cc = sc + dc;
+        if (!inBounds(rows,cols,rr,cc)) continue;
+        forbidden.add(idx(rows,cols,rr,cc));
+      }
+    } else {
+      const offs = getOffsetsFor(tilingKey, adjacencyKey).concat([[0,0]]);
+      for (const [dr,dc] of offs) {
+        const rr = sr + dr, cc = sc + dc;
+        if (!inBounds(rows,cols,rr,cc)) continue;
+        forbidden.add(idx(rows,cols,rr,cc));
+      }
+    }
   }
 
   let placed = 0, k = 0;
@@ -129,7 +178,6 @@ function revealCell(grid, r, c, tilingKey, adjacencyKey){
 
   const changed = [];
   const stack = [[r,c]];
-  const offsets = getOffsetsFor(tilingKey, adjacencyKey);
 
   while (stack.length){
     const [rr,cc] = stack.pop();
@@ -137,8 +185,17 @@ function revealCell(grid, r, c, tilingKey, adjacencyKey){
     const cell = cells[i];
     if (!cell || cell.revealed || cell.flagged) continue;
     cell.revealed = true; changed.push([rr,cc]);
-    if (cell.count === 0){
-      for (const [dr,dc] of offsets){
+
+    // determine neighbors per tiling/adjacency
+    let offs;
+    if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) {
+      offs = triangleOffsetsForCell(rr, cc, adjacencyKey);
+    } else {
+      offs = getOffsetsFor(tilingKey, adjacencyKey);
+    }
+
+    if (cell.count === 0) {
+      for (const [dr,dc] of offs){
         const nr = rr + dr, nc = cc + dc;
         if (!inBounds(rows,cols,nr,nc)) continue;
         const ni = idx(rows,cols,nr,nc);
@@ -160,9 +217,11 @@ function toggleFlag(grid, r, c){
 }
 
 function countFlaggedNeighbors(grid, r, c, tilingKey, adjacencyKey){
-  const offsets = getOffsetsFor(tilingKey, adjacencyKey);
+  let offs;
+  if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) offs = triangleOffsetsForCell(r,c,adjacencyKey);
+  else offs = getOffsetsFor(tilingKey, adjacencyKey);
   let cnt = 0;
-  for (const [dr,dc] of offsets){
+  for (const [dr,dc] of offs){
     const rr = r + dr, cc = c + dc;
     if (!inBounds(grid.rows, grid.cols, rr, cc)) continue;
     if (grid.cells[idx(grid.rows, grid.cols, rr, cc)].flagged) cnt++;
@@ -171,9 +230,11 @@ function countFlaggedNeighbors(grid, r, c, tilingKey, adjacencyKey){
 }
 
 function revealUnflaggedNeighbors(grid, r, c, tilingKey, adjacencyKey){
-  const offsets = getOffsetsFor(tilingKey, adjacencyKey);
+  let offs;
+  if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) offs = triangleOffsetsForCell(r,c,adjacencyKey);
+  else offs = getOffsetsFor(tilingKey, adjacencyKey);
   const toReveal = [];
-  for (const [dr,dc] of offsets){
+  for (const [dr,dc] of offs){
     const rr = r + dr, cc = c + dc;
     if (!inBounds(grid.rows, grid.cols, rr, cc)) continue;
     const cell = grid.cells[idx(grid.rows, grid.cols, rr, cc)];
@@ -208,12 +269,21 @@ function computeHexPolygon(cx, cy, radius) {
   }
   return pts;
 }
-function computeTrianglePolygon(cx, cy, size, upward=true) {
-  const h = Math.sqrt(3)/2 * size;
+// precise triangle polygon with upward/downward orientation
+function computeTrianglePolygon(cx, cy, s, upward=true) {
+  const h = Math.sqrt(3) / 2 * s;
   if (upward) {
-    return [[cx, cy - 2*h/3],[cx - size/2, cy + h/3],[cx + size/2, cy + h/3]];
+    return [
+      [cx, cy - (2/3) * h],
+      [cx - s/2, cy + (1/3) * h],
+      [cx + s/2, cy + (1/3) * h]
+    ];
   } else {
-    return [[cx, cy + 2*h/3],[cx - size/2, cy - h/3],[cx + size/2, cy - h/3]];
+    return [
+      [cx, cy + (2/3) * h],
+      [cx - s/2, cy - (1/3) * h],
+      [cx + s/2, cy - (1/3) * h]
+    ];
   }
 }
 
@@ -246,19 +316,21 @@ function squareCenter(rows, cols, size) {
   return {centers, w: cols * size + 12, h: rows * size + 12};
 }
 
-// triangle centers arranged for equilateral tiling (alternating up/down)
-function triangleCenter(rows, cols, size) {
-  const h = Math.sqrt(3)/2 * size;
+// triangle centers arranged for exact equilateral tiling (alternating up/down)
+function triangleCenter(rows, cols, s) {
+  const h = Math.sqrt(3)/2 * s;
   const centers = [];
+  const xStep = s * 0.5;
+  const yStep = h * 0.5;
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
-      const x = c * (size * 0.5) + size/2 + 6;
-      const y = r * h + ((c & 1) ? h/2 : 0) + h/2 + 6;
+      const x = c * xStep + s/2 + 6;
+      const y = r * yStep + h/2 + 6;
       centers.push({r,c,x,y});
     }
   }
-  const w = (cols - 1) * (size * 0.5) + size + 12;
-  const H = (rows - 1) * h + h + 12;
+  const w = (cols - 1) * xStep + s + 12;
+  const H = (rows - 1) * yStep + h + 12;
   return {centers, w, h: H};
 }
 
@@ -266,8 +338,6 @@ function triangleCenter(rows, cols, size) {
 let gameGrid = null;
 let running = false;
 let firstClick = true;
-
-// tile/adjacency state (initialized later)
 let currentTiling = null;
 let currentAdjacency = null;
 
@@ -275,7 +345,6 @@ function renderTiledBoard() {
   appRoot.innerHTML = '';
   if (!gameGrid) return;
   const rows = gameGrid.rows, cols = gameGrid.cols;
-
   const baseSize = Math.max(18, Math.min(48, Math.floor(720 / Math.max(8, cols))));
   let centersInfo;
   const tileType = currentTiling || 'square';
@@ -292,7 +361,7 @@ function renderTiledBoard() {
     const cx = cellInfo.x, cy = cellInfo.y;
     let pts;
     if (tileType === 'hex') pts = computeHexPolygon(cx, cy, baseSize/2);
-    else if (tileType === 'triangle') pts = computeTrianglePolygon(cx, cy, baseSize, ((r + c) % 2) === 0);
+    else if (tileType === 'triangle') pts = computeTrianglePolygon(cx, cy, baseSize, triangleOrientation(r,c));
     else pts = computeSquarePolygon(cx, cy, baseSize);
 
     const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke: '#0ea5b3', 'stroke-width': 1, fill: '#022' });
@@ -310,13 +379,11 @@ function renderTiledBoard() {
       label.textContent = '🚩';
     }
 
-    // interactions
     poly.addEventListener('click', ()=> {
       if (!running) return;
       const rr = r, cc = c;
       const cellNow = gameGrid.cells[idx(gameGrid.rows, gameGrid.cols, rr, cc)];
 
-      // chord
       if (cellNow.revealed && cellNow.count > 0) {
         const flagged = countFlaggedNeighbors(gameGrid, rr, cc, currentTiling, currentAdjacency);
         if (flagged === cellNow.count) {
@@ -340,7 +407,6 @@ function renderTiledBoard() {
         return;
       }
 
-      // normal reveal
       if (firstClick){
         placeMines(gameGrid, Number(msMines.value), currentTiling, currentAdjacency, [rr,cc]);
         firstClick = false;
@@ -360,8 +426,7 @@ function renderTiledBoard() {
     poly.addEventListener('contextmenu', (e)=> {
       e.preventDefault();
       if (!running) return;
-      const rr = r, cc = c;
-      toggleFlag(gameGrid, rr, cc);
+      toggleFlag(gameGrid, r, c);
       if (checkWin(gameGrid)){ running = false; msStatus.textContent = 'You win!'; }
       else msStatus.textContent = 'Playing...';
       renderTiledBoard();
@@ -374,7 +439,7 @@ function renderTiledBoard() {
   appRoot.appendChild(svg);
 }
 
-// --- Legacy table renderer (fallback for square) ---
+// fallback square table renderer
 function renderTableBoard() {
   appRoot.innerHTML = '';
   if (!gameGrid) return;
@@ -475,7 +540,6 @@ function startNewGame(auto = false){
   running = true;
   firstClick = true;
   msStatus.textContent = 'Ready — first click is safe';
-  // render according to tiling
   if (!currentTiling) {
     currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
     currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
@@ -485,14 +549,13 @@ function startNewGame(auto = false){
 
 // populate tiling/adacency selectors
 function populateTilingControls() {
-  // tiling select
   tilingSelect.innerHTML = '';
   for (const key of Object.keys(TILINGS)) {
     const opt = document.createElement('option');
     opt.value = key; opt.textContent = TILINGS[key].label;
     tilingSelect.appendChild(opt);
   }
-  // adjacency population helper
+
   function populateAdj(tilingKey){
     adjacencySelect.innerHTML = '';
     const adj = TILINGS[tilingKey].adjacencies || {};
@@ -514,7 +577,6 @@ function populateTilingControls() {
     currentTiling = e.target.value;
     currentAdjacency = adjacencySelect.value;
     msStatus.textContent = `Tiling: ${TILINGS[currentTiling].label} (Adjacency: ${TILINGS[currentTiling].adjacencies[currentAdjacency].label})`;
-    // re-render board with new tiling style
     if (gameGrid) {
       if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
     }
@@ -525,7 +587,6 @@ function populateTilingControls() {
   });
 }
 
-// apply adjacency without restarting: recompute counts and re-render
 applyAdjacencyBtn.addEventListener('click', ()=> {
   currentTiling = tilingSelect.value;
   currentAdjacency = adjacencySelect.value;
@@ -540,14 +601,12 @@ applyAdjacencyBtn.addEventListener('click', ()=> {
 
 newGameBtn.addEventListener('click', ()=> startNewGame());
 
-// initialize controls after DOM ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', populateTilingControls);
 } else {
   populateTilingControls();
 }
 
-// initialize state and start
 currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
 currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
 startNewGame();
