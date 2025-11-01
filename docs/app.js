@@ -653,6 +653,17 @@ function initOnceDomReady() {
   const newBtn = document.getElementById('newGame');
   // populate selects and attach internal handlers
   populateTilingControls();
+// triangle sliders configs
+  const xSlider = document.getElementById('xGapSlider');
+const ySlider = document.getElementById('yGapSlider');
+if (xSlider) xSlider.addEventListener('input', (e) => {
+  document.getElementById('xGapValue').textContent = e.target.value;
+  if (currentTiling === 'triangle') renderTiledBoard();
+});
+if (ySlider) ySlider.addEventListener('input', (e) => {
+  document.getElementById('yGapValue').textContent = e.target.value;
+  if (currentTiling === 'triangle') renderTiledBoard();
+});
 
   // wire apply and new game with id-based listeners (remove previous to avoid duplicates)
   if (applyBtn) {
