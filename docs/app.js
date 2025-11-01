@@ -33,20 +33,78 @@ const TILINGS = {
   }
 };
 
-// --- DOM refs ---
-const appRoot = document.getElementById('appRoot');
-const msRows = document.getElementById('msRows');
-const msCols = document.getElementById('msCols');
-const msMines = document.getElementById('msMines');
-const newGameBtn = document.getElementById('newGame');
-const msStatus = document.getElementById('msStatus');
+// --- DOM refs (will be bound at init time) ---
+let appRoot, msRows, msCols, msMines, newGameBtn, msStatus;
+let tilingSelect, adjacencySelect, applyAdjacencyBtn;
 
-const tilingSelect = document.getElementById('tilingSelect');
-const adjacencySelect = document.getElementById('adjacencySelect');
-const applyAdjacencyBtn = document.getElementById('applyAdjacency');
+// Robust initialization: bind DOM refs, wire listeners, populate controls, start game
+function bindDomRefs() {
+  appRoot = document.getElementById('appRoot');
+  msRows = document.getElementById('msRows');
+  msCols = document.getElementById('msCols');
+  msMines = document.getElementById('msMines');
+  newGameBtn = document.getElementById('newGame');
+  msStatus = document.getElementById('msStatus');
 
-if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !tilingSelect || !adjacencySelect || !applyAdjacencyBtn || !msStatus) {
-  console.error('Missing expected DOM controls. Ensure docs/index.html contains the control elements with correct IDs.');
+  tilingSelect = document.getElementById('tilingSelect');
+  adjacencySelect = document.getElementById('adjacencySelect');
+  applyAdjacencyBtn = document.getElementById('applyAdjacency');
+}
+
+function wireEventHandlers() {
+  applyAdjacencyBtn.addEventListener('click', ()=> {
+    currentTiling = tilingSelect.value;
+    currentAdjacency = adjacencySelect.value;
+    if (gameGrid) {
+      computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
+      if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
+      msStatus.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
+    } else {
+      msStatus.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
+    }
+  });
+
+  newGameBtn.addEventListener('click', ()=> startNewGame());
+
+  tilingSelect.addEventListener('change', (e) => {
+    populateAdj(e.target.value);
+    currentTiling = e.target.value;
+    currentAdjacency = adjacencySelect.value;
+    msStatus.textContent = `Tiling: ${TILINGS[currentTiling].label} (Adjacency: ${TILINGS[currentTiling].adjacencies[currentAdjacency].label})`;
+    if (gameGrid) {
+      if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
+    }
+  });
+
+  adjacencySelect.addEventListener('change', ()=> {
+    currentAdjacency = adjacencySelect.value;
+  });
+}
+
+// single entrypoint that runs once DOM is ready
+function initOnceDomReady() {
+  bindDomRefs();
+
+  // check required elements
+  if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !tilingSelect || !adjacencySelect || !applyAdjacencyBtn || !msStatus) {
+    console.error('Initialization failed: one or more controls missing. Ensure index.html has the expected IDs.');
+    return;
+  }
+
+  // populate controls and attach internal listeners
+  populateTilingControls();
+  wireEventHandlers();
+
+  currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
+  currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
+  startNewGame();
+}
+
+// attach DOMContentLoaded listener and also run immediately if DOM is already loaded
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initOnceDomReady);
+} else {
+  initOnceDomReady();
 }
 
 
