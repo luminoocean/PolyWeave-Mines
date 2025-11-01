@@ -271,46 +271,45 @@ function computeHexPolygon(cx, cy, radius, gapPx = 1.0) {
   return pts;
 }
 
-// precise triangle polygon with upward/downward orientation using visual gapPx
-function computeTrianglePolygon(cx, cy, s, upward=true, gapPx = 1.0) {
-  const visualS = Math.max(2, s - 2*gapPx);
-  const h = Math.sqrt(3) / 2 * visualS;
-  if (upward) {
-    return [
-      [cx, cy - (2/3) * h],
-      [cx - visualS/2, cy + (1/3) * h],
-      [cx + visualS/2, cy + (1/3) * h]
-    ];
-  } else {
-    return [
-      [cx, cy + (2/3) * h],
-      [cx - visualS/2, cy - (1/3) * h],
-      [cx + visualS/2, cy - (1/3) * h]
-    ];
-  }
+// compute triangle vertices from centroid (cx,cy)
+// s is the desired side length to draw (visual side length, i.e., after subtracting gap)
+function computeTrianglePolygonFromCentroid(cx, cy, s, upward = true) {
+  const h = Math.sqrt(3) / 2 * s;
+  // centroid of equilateral triangle is located at distance h/3 from base toward apex
+  // For an upward triangle: apex is at (cx, cy - 2/3*h), bases at cy + 1/3*h
+  const apexY = (upward ? cy - (2/3) * h : cy + (2/3) * h);
+  const baseY  = (upward ? cy + (1/3) * h : cy - (1/3) * h);
+  const half = s / 2;
+  return [
+    [cx, apexY],
+    [cx - half, baseY],
+    [cx + half, baseY]
+  ];
 }
 
-// --- Center calculations using exact lattice geometry (no GAP multipliers) ---
-
-// hex grid centers using pointy-top odd-r offset layout with exact steps
-function hexCenter(rows, cols, radius) {
-  const R = radius;
-  const hexWidth = 2 * R;
-  const hexHeight = Math.sqrt(3) * R;
-  const xStep = 1.5 * R;            // 3/2 * R
-  const yStep = hexHeight;          // sqrt(3) * R
+// triangleCenter: compute centroids using exact lattice math so adjacent centroids match base/apex geometry
+function triangleCenter(rows, cols, s) {
+  const h = Math.sqrt(3) / 2 * s;      // full triangle height for nominal side s
+  const xStep = s / 2;                 // horizontal step between centroids
+  const yStep = (2/3) * h;             // vertical centroid step between adjacent up/down triangles
   const centers = [];
   const PAD = 8;
-  for (let r=0;r<rows;r++){
-    for (let c=0;c<cols;c++){
-      const x = c * xStep + R + PAD;
-      const y = r * yStep + ((c & 1) ? (hexHeight / 2) : 0) + R + PAD;
-      centers.push({r,c,x,y});
+
+  // y0 positions first centroid so centroid is at distance h/3 from top edge of its bounding triangle
+  // we keep consistent with computeTrianglePolygonFromCentroid which uses centroid reference
+  const y0 = PAD + h / 3;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c * xStep + s / 2 + PAD;
+      const y = r * yStep + y0;
+      centers.push({ r, c, x, y });
     }
   }
-  const w = (cols - 1) * xStep + hexWidth + PAD*2;
-  const h = (rows - 1) * yStep + hexHeight + PAD*2;
-  return {centers, w, h};
+
+  const w = (cols - 1) * xStep + s + PAD * 2;
+  const H = (rows - 1) * yStep + h + PAD * 2;
+  return { centers, w, h: H };
 }
 
 function squareCenter(rows, cols, size) {
