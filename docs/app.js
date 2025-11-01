@@ -334,7 +334,7 @@ function renderTiledBoard() {
     if (tileType === 'hex') pts = computeHexPolygon(cx, cy, baseSize/2, gapPx);
     else if (tileType === 'triangle') {
       const nominalS = baseSize;
-      const visualS = Math.max(2, nominalS - 2*gapPx);
+      const visualS = Math.max(2, nominalS - 4*gapPx);
       pts = computeTrianglePolygonFromCentroid(cx, cy, visualS, triangleOrientation(r,c));
     } else pts = computeSquarePolygon(cx, cy, baseSize);
 
