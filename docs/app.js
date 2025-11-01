@@ -323,8 +323,8 @@ function triangleCenter(rows, cols, s) {
   const GAP = 1.03;
   const h = Math.sqrt(3)/2 * s;
   const centers = [];
-  const xStep = s * GAP;
-  const yStep = h * 0.5 * GAP;
+  const xStep = s * .75 * GAP;
+  const yStep = h * .75 * GAP;
   const PAD = 8;
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
