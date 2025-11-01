@@ -1,9 +1,6 @@
-// app.js — PolyWeave Mines (updated)
-// - fixed equilateral triangles to be equilateral (60°)
-// - right-triangle tiling uses square-subdivision right triangles
-// - settings wired: size slider, gap scale, tri shrink, debug overlay
-// Expects index.html IDs: appRoot, msRows, msCols, msMines, tilingSelect, adjacencySelect, applyAdjacency, newGame, msStatus
-// Optional: triShrinkSlider, xGapSlider, sizeSlider, msDebugCheckbox
+// app.js — PolyWeave Mines (full replacement)
+// Ensures: tiling selects populate; equilateral triangles are equilateral; right-triangle tiling uses right triangles;
+// settings wired: size slider, tri shrink, gap scale, debug overlay
 
 const TILINGS = {
   square: { label: "Square", adjacencies: { "square-8": { label: "Square 8 (all 8)", offsets: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] }, "von-neumann": { label: "Von Neumann (4)", offsets: [[-1,0],[1,0],[0,-1],[0,1]] } } },
@@ -19,14 +16,11 @@ let running = false;
 let firstClick = true;
 let currentTiling = null;
 let currentAdjacency = null;
-
-// debug overlay
 let debugEnabled = false;
 let debugEl = null;
 
 function idx(rows, cols, r, c){ return r * cols + c; }
 function inBounds(rows, cols, r, c){ return r >= 0 && r < rows && c >= 0 && c < cols; }
-
 function createGrid(rows, cols, mines=0){ return { rows, cols, mines, cells: Array(rows*cols).fill(0).map(()=>({ mine:false, revealed:false, flagged:false, count:0 })) }; }
 
 function triangleRightOffsets(r,c,adjKey){
@@ -34,15 +28,12 @@ function triangleRightOffsets(r,c,adjKey){
   if (adjKey === 'triR-edge') return right ? [[0,-1],[1,0],[0,1]] : [[0,-1],[-1,0],[0,1]];
   const arr=[]; for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++) if(!(dr===0&&dc===0)) arr.push([dr,dc]); return arr;
 }
-
-// equilateral offsets use alternating up/down
 function triangleEquiOffsets(r,c,adjKey){
   const up = ((r + c) % 2) === 0;
   if (adjKey === 'triE-edge') return up ? [[0,-1],[1,0],[0,1]] : [[0,-1],[-1,0],[0,1]];
   if (adjKey === 'triE-edgev') return up ? [[0,-1],[-1,0],[1,0],[0,1],[-1,1],[1,-1]] : [[0,-1],[-1,0],[1,0],[0,1],[-1,-1],[1,1]];
   const arr=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) arr.push([dr,dc]); return arr;
 }
-
 function getOffsetsFor(tilingKey, adjacencyKey){
   if (tilingKey === 'triangle_right' || tilingKey === 'triangle_equi') return null;
   return (TILINGS[tilingKey] && TILINGS[tilingKey].adjacencies[adjacencyKey] && TILINGS[tilingKey].adjacencies[adjacencyKey].offsets) || [];
@@ -194,10 +185,8 @@ function buildEquilateralVertexLattice(rows, cols, s, PAD = 8){
       const baseVc = c * 2;
       const up = ((r + c) % 2) === 0;
       if (up) {
-        // up triangle: top vertex at (vr, baseVc+1), bottom-left (vr+1, baseVc), bottom-right (vr+1, baseVc+2)
         triIndex.push({ r, c, upward:true, verts: [ vIndex(vr, baseVc+1), vIndex(vr+1, baseVc), vIndex(vr+1, baseVc+2) ] });
       } else {
-        // down triangle: bottom vertex at (vr+1, baseVc+1), top-left (vr, baseVc), top-right (vr, baseVc+2)
         triIndex.push({ r, c, upward:false, verts: [ vIndex(vr+1, baseVc+1), vIndex(vr, baseVc), vIndex(vr, baseVc+2) ] });
       }
     }
@@ -288,14 +277,13 @@ function renderTiledBoard(){
     const PAD = 8;
     const lattice = buildRightTriangleLattice(rows, cols, baseSize, PAD);
     const { vertices, triIndex, w: svgW, h: svgH } = lattice;
-    // horizontal gap scaling
     const svg = makeSvgElement('svg', { width: svgW * gapScale, height: svgH, viewBox: `0 0 ${svgW * gapScale} ${svgH}` });
     svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
 
     for (const ti of triIndex){
       const r = ti.r, c = ti.c;
       const vertsPts = ti.verts.map(i => vertices[i] || { x:0, y:0 });
-      const scaledVerts = vertsPts.map(v => ({ x: (v.x - PAD) * gapScale + PAD, y: v.y })); // scale horizontally around left PAD
+      const scaledVerts = vertsPts.map(v => ({ x: (v.x - 8) * gapScale + 8, y: v.y }));
       const pts = shrinkTriangleVertices(scaledVerts, Number((document.getElementById('triShrinkSlider')||{value:0}).value || 0));
       const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke: '#0ea5b3', 'stroke-width': 1, 'stroke-linejoin': 'round', fill: '#022' });
       const cell = gameGrid.cells[idx(rows,cols,r,c)];
@@ -397,14 +385,12 @@ function renderTiledBoard(){
 /* debug overlays */
 function addDebugOverlayEqui(lattice, svg){
   debugEl = document.createElement('div'); debugEl.className = 'debug-overlay';
-  debugEl.style.position = 'relative';
-  const nodes = lattice.vertices.map((v,i)=> `v${i}:${Math.round(v.x)},${Math.round(v.y)}` ).slice(0,60).join(' ');
-  debugEl.textContent = `verts:${lattice.vertices.length} tris:${lattice.triIndex.length} ${nodes}`;
+  debugEl.textContent = `verts:${lattice.vertices.length} tris:${lattice.triIndex.length}`;
   svg.parentNode.insertBefore(debugEl, svg.nextSibling);
 }
 function addDebugOverlayRight(lattice, svg, gapScale){
   debugEl = document.createElement('div'); debugEl.className = 'debug-overlay';
-  debugEl.textContent = `verts:${lattice.vertices.length} tris:${lattice.triIndex.length} gapScale:${gapScale.toFixed(2)}`;
+  debugEl.textContent = `verts:${lattice.vertices.length} tris:${lattice.triIndex.length} gap:${gapScale.toFixed(2)}`;
   svg.parentNode.insertBefore(debugEl, svg.nextSibling);
 }
 
@@ -499,5 +485,4 @@ function initOnceDomReady(){
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initOnceDomReady); else setTimeout(initOnceDomReady, 0);
 
-/* export for quick debugging */
 try { window.renderTiledBoard = renderTiledBoard; window.startNewGame = startNewGame; window.TILINGS = TILINGS; } catch(e){}
