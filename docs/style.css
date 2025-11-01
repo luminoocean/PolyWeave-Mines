@@ -24,3 +24,62 @@ table.mboard td.revealed.mine { background:#440000; color:#fff; }
 table.mboard td.flagged { color:#ffb86b; }
 .footer { margin-top:14px; text-align:center; }
 .status { margin-left:8px; }
+/* Settings modal and button for Minesweeper app */
+.ms-btn {
+  font: 13px/1.2 system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: linear-gradient(#0b1220,#061018);
+  color: #bfefff;
+  cursor: pointer;
+  margin-left: 8px;
+}
+
+.ms-btn.primary {
+  background: linear-gradient(#0ea5b3,#0b98ad);
+  color: #042426;
+  font-weight: 600;
+}
+
+/* Modal backdrop */
+.ms-modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0,0,0,0.5);
+  z-index: 1200;
+}
+
+/* Hidden state */
+.ms-modal[aria-hidden="true"] { display: none; }
+
+/* Panel */
+.ms-modal-panel {
+  width: 420px;
+  max-width: calc(100% - 40px);
+  background: linear-gradient(#071219,#041018);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  padding: 12px;
+  color: #d9f7ff;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+/* Header / footer */
+.ms-modal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+.ms-modal-header h3 { margin:0; font-size:16px; font-weight:600; color:#e6fbff; }
+.ms-close { background:transparent; border:0; color:#bfefff; cursor:pointer; font-size:14px; }
+
+/* Body rows */
+.ms-modal-body { display:flex; flex-direction:column; gap:10px; padding:6px 0 10px; }
+.ms-row { display:flex; align-items:center; gap:10px; font-size:13px; color:#bfefff; }
+
+/* Slider styling (simple) */
+input[type="range"] { width: 160px; appearance:none; height:6px; background:linear-gradient(#0b1220,#061018); border-radius:6px; }
+input[type="range"]::-webkit-slider-thumb { appearance:none; width:14px; height:14px; border-radius:50%; background:#0ea5b3; box-shadow:0 1px 4px rgba(0,0,0,0.6); }
+
+/* Footer */
+.ms-modal-footer { display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }
+
