@@ -1,9 +1,8 @@
 // docs/app.js — Full Minesweeper app with Tiling + Adjacency and SVG tile rendering
-// Replaces previous file. Uses exact lattice center math and a visual gapPx to ensure tiles do not touch.
-// Expects controls in docs/index.html with IDs:
+// Drop this file in place of your previous app.js. Expects controls in index.html with IDs:
 // msRows, msCols, msMines, tilingSelect, adjacencySelect, applyAdjacency, newGame, msStatus, appRoot
 
-// --- TILINGS + adjacency presets (tilings that repeat infinitely) ---
+// --- TILINGS + adjacency presets ---
 const TILINGS = {
   "square": {
     label: "Square",
@@ -18,8 +17,8 @@ const TILINGS = {
   "triangle": {
     label: "Triangle",
     adjacencies: {
-      "tri-edge": { label: "Triangle edge neighbors (3)", offsets: null },        // per-cell
-      "tri-edge+v": { label: "Triangle edges+vertices (6)", offsets: null },    // per-cell
+      "tri-edge": { label: "Triangle edge neighbors (3)", offsets: null },
+      "tri-edge+v": { label: "Triangle edges+vertices (6)", offsets: null },
       "tri-r2": { label: "Triangle radius 2", offsets: (function(){ const o=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) o.push([dr,dc]); return o; })() }
     }
   },
@@ -33,86 +32,11 @@ const TILINGS = {
   }
 };
 
-// --- DOM refs (will be bound at init time) ---
-let appRoot, msRows, msCols, msMines, newGameBtn, msStatus;
-let tilingSelect, adjacencySelect, applyAdjacencyBtn;
-
-// Robust initialization: bind DOM refs, wire listeners, populate controls, start game
-function bindDomRefs() {
-  appRoot = document.getElementById('appRoot');
-  msRows = document.getElementById('msRows');
-  msCols = document.getElementById('msCols');
-  msMines = document.getElementById('msMines');
-  newGameBtn = document.getElementById('newGame');
-  msStatus = document.getElementById('msStatus');
-
-  tilingSelect = document.getElementById('tilingSelect');
-  adjacencySelect = document.getElementById('adjacencySelect');
-  applyAdjacencyBtn = document.getElementById('applyAdjacency');
-}
-
-function wireEventHandlers() {
-  applyAdjacencyBtn.addEventListener('click', ()=> {
-    currentTiling = tilingSelect.value;
-    currentAdjacency = adjacencySelect.value;
-    if (gameGrid) {
-      computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
-      if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
-      msStatus.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
-    } else {
-      msStatus.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
-    }
-  });
-
-  newGameBtn.addEventListener('click', ()=> startNewGame());
-
-  tilingSelect.addEventListener('change', (e) => {
-    populateAdj(e.target.value);
-    currentTiling = e.target.value;
-    currentAdjacency = adjacencySelect.value;
-    msStatus.textContent = `Tiling: ${TILINGS[currentTiling].label} (Adjacency: ${TILINGS[currentTiling].adjacencies[currentAdjacency].label})`;
-    if (gameGrid) {
-      if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
-    }
-  });
-
-  adjacencySelect.addEventListener('change', ()=> {
-    currentAdjacency = adjacencySelect.value;
-  });
-}
-
-// single entrypoint that runs once DOM is ready
-function initOnceDomReady() {
-  bindDomRefs();
-
-  // check required elements
-  if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !tilingSelect || !adjacencySelect || !applyAdjacencyBtn || !msStatus) {
-    console.error('Initialization failed: one or more controls missing. Ensure index.html has the expected IDs.');
-    return;
-  }
-
-  // populate controls and attach internal listeners
-  populateTilingControls();
-  wireEventHandlers();
-
-  currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
-  currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
-  startNewGame();
-}
-
-// attach DOMContentLoaded listener and also run immediately if DOM is already loaded
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initOnceDomReady);
-} else {
-  initOnceDomReady();
-}
-
-
 // --- Visual constants ---
 const NUMBER_COLORS = {
-  1: '#3ec7ff', // blue
-  2: '#ff6b6b', // red
-  3: '#ffd27a', // yellow/orange
+  1: '#3ec7ff',
+  2: '#ff6b6b',
+  3: '#ffd27a',
   4: '#a88cff',
   5: '#ff9fb3',
   6: '#7ce7ff',
@@ -120,35 +44,29 @@ const NUMBER_COLORS = {
   8: '#b0c4de'
 };
 
+// --- DOM refs (bound at init time) ---
+let appRoot, msRows, msCols, msMines, newGameBtn, msStatus;
+let tilingSelect, adjacencySelect, applyAdjacencyBtn;
+
 // --- Helpers ---
 function idx(rows, cols, r, c){ return r*cols + c; }
 function inBounds(rows, cols, r, c){ return r>=0 && r<rows && c>=0 && c<cols; }
+function triangleOrientation(r, c) { return ((r + c) % 2) === 0; }
 
-// triangle orientation: returns true if upward for given center (r,c)
-function triangleOrientation(r, c) {
-  return ((r + c) % 2) === 0;
-}
-
-// returns per-cell offsets for triangle adjacency based on orientation
 function triangleOffsetsForCell(r, c, adjKey) {
   const up = triangleOrientation(r, c);
   if (adjKey === 'tri-edge') {
-    // edge-sharing adjacency: three neighbors
-    return up ? [[0,-1],[1,0],[0,1]]   // left, down-right, right
-              : [[0,-1],[-1,0],[0,1]]; // left, up-left, right
+    return up ? [[0,-1],[1,0],[0,1]] : [[0,-1],[-1,0],[0,1]];
   }
   if (adjKey === 'tri-edge+v') {
-    // edges + vertex-sharing neighbors (6)
     return up ? [[0,-1],[-1,0],[1,0],[0,1],[-1,1],[1,-1]]
               : [[0,-1],[-1,0],[1,0],[0,1],[-1,-1],[1,1]];
   }
-  // fallback symmetric neighborhood
   const arr = [];
   for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++) if (!(dr===0&&dc===0)) arr.push([dr,dc]);
   return arr;
 }
 
-// return offsets[] for tiling+adjacency; triangle may return null (means per-cell)
 function getOffsetsFor(tilingKey, adjacencyKey) {
   if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) return null;
   return (TILINGS[tilingKey] && TILINGS[tilingKey].adjacencies[adjacencyKey] && TILINGS[tilingKey].adjacencies[adjacencyKey].offsets) || [];
@@ -162,7 +80,6 @@ function createGrid(rows, cols, mines=0){
 function computeCountsWithAdjacency(grid, tilingKey, adjacencyKey){
   const { rows, cols, cells } = grid;
   if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) {
-    // per-cell offsets for triangles
     for (let r=0;r<rows;r++){
       for (let c=0;c<cols;c++){
         const i = idx(rows,cols,r,c);
@@ -256,7 +173,6 @@ function revealCell(grid, r, c, tilingKey, adjacencyKey){
     if (!cell || cell.revealed || cell.flagged) continue;
     cell.revealed = true; changed.push([rr,cc]);
 
-    // determine neighbors per tiling/adjacency
     let offs;
     if (tilingKey === 'triangle' && (adjacencyKey === 'tri-edge' || adjacencyKey === 'tri-edge+v')) {
       offs = triangleOffsetsForCell(rr, cc, adjacencyKey);
@@ -317,7 +233,7 @@ function checkWin(grid){
   return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed));
 }
 
-// --- SVG renderer helpers ---
+// --- SVG helpers ---
 function makeSvgElement(tag, attrs = {}) {
   const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
   for (const k in attrs) el.setAttribute(k, String(attrs[k]));
@@ -331,11 +247,9 @@ function computeSquarePolygon(cx, cy, size) {
   return [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]];
 }
 
-// compute triangle vertices from centroid (cx,cy)
-// s is the desired side length to draw (visual side length, i.e., after subtracting gap)
+// compute triangle vertices from centroid (cx,cy) using side s (visual side length)
 function computeTrianglePolygonFromCentroid(cx, cy, s, upward = true) {
   const h = Math.sqrt(3) / 2 * s;
-  // centroid is h/3 from base toward apex
   const apexY = (upward ? cy - (2/3) * h : cy + (2/3) * h);
   const baseY  = (upward ? cy + (1/3) * h : cy - (1/3) * h);
   const half = s / 2;
@@ -346,7 +260,7 @@ function computeTrianglePolygonFromCentroid(cx, cy, s, upward = true) {
   ];
 }
 
-// precise hex polygon (pointy-top) with a visual gapPx
+// hex polygon (pointy-top) with visual radius accounting for gapPx
 function computeHexPolygon(cx, cy, radius, gapPx = 1.0) {
   const visualR = Math.max(1, radius - gapPx);
   const pts = [];
@@ -357,22 +271,19 @@ function computeHexPolygon(cx, cy, radius, gapPx = 1.0) {
   return pts;
 }
 
-// --- Center calculations using exact lattice geometry (no arbitrary GAP multipliers) ---
+// --- Center geometries (exact lattice math) ---
 
-// hex grid centers using pointy-top odd-q offset layout with exact steps
-// This places hexes in a honeycomb where edges are parallel across rows (pointy-top layout).
+// hex centers (pointy-top odd-q offset) — honeycomb with edges parallel across rows
 function hexCenter(rows, cols, radius) {
   const R = radius;
   const hexWidth = 2 * R;
   const hexHeight = Math.sqrt(3) * R;
-  // For pointy-top hexes the horizontal step is 3/2 * R and vertical is sqrt(3) * R
-  const xStep = 1.5 * R;
-  const yStep = hexHeight;
+  const xStep = 1.5 * R;      // 3/2 * R
+  const yStep = hexHeight;    // sqrt(3) * R
   const centers = [];
   const PAD = 8;
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
-      // odd-q style offset (stagger rows by column parity)
       const x = c * xStep + R + PAD;
       const y = r * yStep + ((c & 1) ? (hexHeight / 2) : 0) + R + PAD;
       centers.push({r,c,x,y});
@@ -383,7 +294,6 @@ function hexCenter(rows, cols, radius) {
   return {centers, w, h};
 }
 
-// square centers
 function squareCenter(rows, cols, size) {
   const PAD = 8;
   const centers = [];
@@ -395,17 +305,14 @@ function squareCenter(rows, cols, size) {
   return {centers, w: cols * size + 16, h: rows * size + 16};
 }
 
-// triangle centers arranged for exact equilateral tiling (alternating up/down)
-// Use centroid lattice: xStep = s/2, yStep = 2/3 * h so centroids of up/down triangles line up without apex/base overlap.
+// triangle centers: centroid lattice so adjacent centroids don't cause apex/base overlap
 function triangleCenter(rows, cols, s) {
-  const h = Math.sqrt(3)/2 * s;      // full triangle height for nominal side s
-  const xStep = s / 2;               // horizontal step between centroids
-  const yStep = (2/3) * h;           // vertical centroid step between adjacent up/down triangles
+  const h = Math.sqrt(3)/2 * s;
+  const xStep = s / 2;
+  const yStep = (2/3) * h;
   const centers = [];
   const PAD = 8;
-  // y0 positions first centroid so centroid is at distance h/3 from top edge of its bounding triangle
   const y0 = PAD + h / 3;
-
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const x = c * xStep + s / 2 + PAD;
@@ -413,7 +320,6 @@ function triangleCenter(rows, cols, s) {
       centers.push({ r, c, x, y });
     }
   }
-
   const w = (cols - 1) * xStep + s + PAD * 2;
   const H = (rows - 1) * yStep + h + PAD * 2;
   return { centers, w, h: H };
@@ -431,11 +337,10 @@ function renderTiledBoard() {
   if (!gameGrid) return;
   const rows = gameGrid.rows, cols = gameGrid.cols;
 
-  // choose base tile size and spacing based on cols (no arbitrary global shrink)
   const requestedCols = Math.max(1, cols);
   const rawBase = Math.floor(720 / Math.max(8, requestedCols));
   const baseSize = Math.max(14, Math.min(48, rawBase));
-  const gapPx = 1.0; // visual separation in pixels; increase for larger gaps on high-DPI
+  const gapPx = 1.0; // tweak for visible gap (increase on high DPI)
 
   let centersInfo;
   const tileType = currentTiling || 'square';
@@ -473,7 +378,6 @@ function renderTiledBoard() {
       'pointer-events': 'none'
     });
 
-    // choose label text and color
     if (cell.revealed) {
       if (cell.mine) {
         label.textContent = '💣';
@@ -709,58 +613,69 @@ function populateTilingControls() {
   });
 }
 
-applyAdjacencyBtn.addEventListener('click', ()=> {
-  currentTiling = tilingSelect.value;
-  currentAdjacency = adjacencySelect.value;
-  if (gameGrid) {
-    computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
-    if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
-    msStatus.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
-  } else {
-    msStatus.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
-  }
-});
+// --- Init and wiring that must run after DOM ready ---
+function bindDomRefs() {
+  appRoot = document.getElementById('appRoot');
+  msRows = document.getElementById('msRows');
+  msCols = document.getElementById('msCols');
+  msMines = document.getElementById('msMines');
+  newGameBtn = document.getElementById('newGame');
+  msStatus = document.getElementById('msStatus');
 
-newGameBtn.addEventListener('click', ()=> startNewGame());
+  tilingSelect = document.getElementById('tilingSelect');
+  adjacencySelect = document.getElementById('adjacencySelect');
+  applyAdjacencyBtn = document.getElementById('applyAdjacency');
+}
 
-// Robust initialization: ensure DOM is ready, controls exist, then populate and start
+function wireEventHandlers() {
+  applyAdjacencyBtn.addEventListener('click', ()=> {
+    currentTiling = tilingSelect.value;
+    currentAdjacency = adjacencySelect.value;
+    if (gameGrid) {
+      computeCountsWithAdjacency(gameGrid, currentTiling, currentAdjacency);
+      if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
+      msStatus.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
+    } else {
+      msStatus.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`;
+    }
+  });
+
+  newGameBtn.addEventListener('click', ()=> startNewGame());
+
+  tilingSelect.addEventListener('change', (e) => {
+    populateTilingControls(); // refresh adjacency options for new tiling
+    currentTiling = e.target.value;
+    currentAdjacency = adjacencySelect.value;
+    msStatus.textContent = `Tiling: ${TILINGS[currentTiling].label} (Adjacency: ${TILINGS[currentTiling].adjacencies[currentAdjacency].label})`;
+    if (gameGrid) {
+      if (currentTiling === 'square') renderTableBoard(); else renderTiledBoard();
+    }
+  });
+
+  adjacencySelect.addEventListener('change', ()=> {
+    currentAdjacency = adjacencySelect.value;
+  });
+}
+
+// single entrypoint that runs once DOM is ready
 function initOnceDomReady() {
-  // re-check DOM refs in case script ran too early
-  if (!tilingSelect || !adjacencySelect || !msRows || !msCols || !msMines || !newGameBtn || !applyAdjacencyBtn || !appRoot || !msStatus) {
-    // try to rebind the DOM elements by id in case module scope had stale refs
-    // (this helps in cases where script executed before DOM but variables captured earlier)
-    const _appRoot = document.getElementById('appRoot');
-    const _msRows = document.getElementById('msRows');
-    const _msCols = document.getElementById('msCols');
-    const _msMines = document.getElementById('msMines');
-    const _newGameBtn = document.getElementById('newGame');
-    const _msStatus = document.getElementById('msStatus');
-    const _tilingSelect = document.getElementById('tilingSelect');
-    const _adjacencySelect = document.getElementById('adjacencySelect');
-    const _applyAdjacencyBtn = document.getElementById('applyAdjacency');
-    if (_appRoot) window.appRoot = _appRoot;
-    if (_msRows) window.msRows = _msRows;
-    if (_msCols) window.msCols = _msCols;
-    if (_msMines) window.msMines = _msMines;
-    if (_newGameBtn) window.newGameBtn = _newGameBtn;
-    if (_msStatus) window.msStatus = _msStatus;
-    if (_tilingSelect) window.tilingSelect = _tilingSelect;
-    if (_adjacencySelect) window.adjacencySelect = _adjacencySelect;
-    if (_applyAdjacencyBtn) window.applyAdjacencyBtn = _applyAdjacencyBtn;
-  }
+  bindDomRefs();
 
-  // If still missing, abort and log
-  if (!document.getElementById('tilingSelect') || !document.getElementById('adjacencySelect')) {
-    console.error('Initialization failed: tiling/adacency controls not found in DOM.');
+  if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !tilingSelect || !adjacencySelect || !applyAdjacencyBtn || !msStatus) {
+    console.error('Initialization failed: one or more controls missing. Ensure index.html has the expected IDs.');
     return;
   }
 
-  if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', populateTilingControls);
-} else {
   populateTilingControls();
+  wireEventHandlers();
+
+  currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
+  currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
+  startNewGame();
 }
 
-currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
-currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
-startNewGame();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initOnceDomReady);
+} else {
+  initOnceDomReady();
+}
