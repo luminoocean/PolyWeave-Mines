@@ -49,6 +49,7 @@ if (!appRoot || !msRows || !msCols || !msMines || !newGameBtn || !tilingSelect |
   console.error('Missing expected DOM controls. Ensure docs/index.html contains the control elements with correct IDs.');
 }
 
+
 // --- Visual constants ---
 const NUMBER_COLORS = {
   1: '#3ec7ff', // blue
@@ -696,16 +697,12 @@ function initOnceDomReady() {
     return;
   }
 
-  // Now populate controls and start
+  if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', populateTilingControls);
+} else {
   populateTilingControls();
-  currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
-  currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
-  startNewGame();
 }
 
-// Always attach DOMContentLoaded and also run immediately if ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initOnceDomReady);
-} else {
-  initOnceDomReady();
-}
+currentTiling = tilingSelect.value || Object.keys(TILINGS)[0];
+currentAdjacency = adjacencySelect.value || Object.keys(TILINGS[currentTiling].adjacencies)[0];
+startNewGame();
