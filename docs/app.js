@@ -1,7 +1,8 @@
-// app.js — PolyWeave Mines (regenerated)
-// Right triangle = zig-zag lattice (hex-like zig pattern)
-// Equilateral = alternating up/down triangles that pair into diamonds
-// Settings wired: size slider (applies to rows/cols on Apply), tri shrink, gap scale, debug overlay
+// app.js — PolyWeave Mines (Think Deeper update)
+// - Right-triangle: zig-zag lattice (hex-like vertices -> zig triangles)
+// - Equilateral-triangle: edge-sharing triangles that form diamond/rhombus pairs
+// - Settings: horizontal stretch (gap X), vertical stretch (gap Y), dilation (zoom), triangle shrink, debug overlay, minefield size
+// - Transforms are rigid: gaps change but each tile's intrinsic shape is preserved
 
 const TILINGS = {
   square: { label: "Square", adjacencies: { "square-8": { label: "Square 8 (all 8)", offsets: [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] }, "von-neumann": { label: "Von Neumann (4)", offsets: [[-1,0],[1,0],[0,-1],[0,1]] } } },
@@ -24,28 +25,26 @@ function idx(rows, cols, r, c){ return r * cols + c; }
 function inBounds(rows, cols, r, c){ return r >= 0 && r < rows && c >= 0 && c < cols; }
 function createGrid(rows, cols, mines=0){ return { rows, cols, mines, cells: Array(rows*cols).fill(0).map(()=>({ mine:false, revealed:false, flagged:false, count:0 })) }; }
 
-/* ---------- Offsets ---------- */
-/* Right-triangle zig adjacency: neighbors follow zig lattice pattern (alternating) */
+/* ---------- adjacency helpers ---------- */
 function triangleRightOffsets(r,c,adjKey){
+  // Zig pattern adjacency: orientation toggles per parity
   const rightPointing = ((r + c) % 2) === 0;
   if (adjKey === 'triR-edge') return rightPointing ? [[0,-1],[1,0],[0,1]] : [[0,-1],[-1,0],[0,1]];
   const arr=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) arr.push([dr,dc]); return arr;
 }
-
-/* Equilateral adjacency: standard alternating up/down (pairs form diamonds) */
 function triangleEquiOffsets(r,c,adjKey){
+  // Alternating up/down; edges shared so neighbors are the three adjacent triangles
   const up = ((r + c) % 2) === 0;
   if (adjKey === 'triE-edge') return up ? [[0,-1],[1,0],[0,1]] : [[0,-1],[-1,0],[0,1]];
   if (adjKey === 'triE-edgev') return up ? [[0,-1],[-1,0],[1,0],[0,1],[-1,1],[1,-1]] : [[0,-1],[-1,0],[1,0],[0,1],[-1,-1],[1,1]];
   const arr=[]; for(let dr=-2;dr<=2;dr++) for(let dc=-2;dc<=2;dc++) if(!(dr===0&&dc===0)) arr.push([dr,dc]); return arr;
 }
-
 function getOffsetsFor(tilingKey, adjacencyKey){
   if (tilingKey === 'triangle_right' || tilingKey === 'triangle_equi') return null;
   return (TILINGS[tilingKey] && TILINGS[tilingKey].adjacencies[adjacencyKey] && TILINGS[tilingKey].adjacencies[adjacencyKey].offsets) || [];
 }
 
-/* ---------- Counts / mines ---------- */
+/* ---------- counts & mines ---------- */
 function computeCountsWithAdjacency(grid, tilingKey, adjacencyKey){
   const { rows, cols, cells } = grid;
   if (tilingKey === 'triangle_right'){
@@ -100,7 +99,7 @@ function placeMines(grid, mineCount, tilingKey, adjacencyKey, safeCell = null){
   computeCountsWithAdjacency(grid, tilingKey, adjacencyKey);
 }
 
-/* ---------- Reveal / flag / helpers ---------- */
+/* ---------- reveal / flag ---------- */
 function revealCell(grid,r,c,tilingKey,adjacencyKey){
   const { rows, cols, cells } = grid;
   if (!inBounds(rows,cols,r,c)) return { changed: [], exploded:false };
@@ -129,18 +128,13 @@ function countFlaggedNeighbors(grid,r,c,tilingKey,adjacencyKey){ let offs; if (t
 function revealUnflaggedNeighbors(grid,r,c,tilingKey,adjacencyKey){ let offs; if (tilingKey==='triangle_right') offs = triangleRightOffsets(r,c,adjacencyKey); else if (tilingKey==='triangle_equi') offs = triangleEquiOffsets(r,c,adjacencyKey); else offs = getOffsetsFor(tilingKey, adjacencyKey); const toReveal=[]; for (const [dr,dc] of offs){ const rr=r+dr, cc=c+dc; if (!inBounds(grid.rows,grid.cols,rr,cc)) continue; const cell = grid.cells[idx(grid.rows,grid.cols,rr,cc)]; if (!cell.flagged && !cell.revealed) toReveal.push([rr,cc]); } return toReveal; }
 function checkWin(grid){ return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed)); }
 
-/* ---------- SVG / geometry ---------- */
+/* ---------- SVG helpers ---------- */
 function makeSvgElement(tag, attrs={}){ const el = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) el.setAttribute(k, String(attrs[k])); return el; }
 function pointsToStr(points){ return points.map(p=>`${p[0]},${p[1]}`).join(' '); }
-function computeSquarePolygon(cx,cy,size){ const s=size/2; return [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]]; }
-function computeHexPolygon(cx,cy,radius){ const pts=[]; for(let k=0;k<6;k++){ const angle=k*Math.PI/3; pts.push([cx+radius*Math.cos(angle), cy+radius*Math.sin(angle)]); } return pts; }
 
-/* ---------- Lattices ---------- */
-/* Zig-zag lattice for right triangles: use a hex-like vertex lattice producing a zig pattern.
-   Each logical cell (r,c) maps to one triangle; parity toggles orientation.
-*/
+/* ---------- lattice builders ---------- */
+/* Zig lattice for Right Triangle: reuse equilateral vertex spacing but pick triangles in zig pattern */
 function buildZigLattice(rows, cols, s, PAD = 8){
-  // reuse equilateral vertex grid spacing but use only a triangle per cell arranged as zig
   const h = Math.sqrt(3)/2 * s;
   const vertexRows = rows + 1;
   const vertexCols = cols * 2 + 1;
@@ -153,11 +147,11 @@ function buildZigLattice(rows, cols, s, PAD = 8){
       vertices.push({ x,y,vr,vc });
     }
   }
-  const vIndex = (vr,vc) => Math.max(0, Math.min(vertexRows-1, vr)) * (vertexCols) + Math.max(0, Math.min(vertexCols-1, vc));
+  const vCols = vertexCols;
+  const vIndex = (vr,vc) => Math.max(0, Math.min(vertexRows-1, vr)) * vCols + Math.max(0, Math.min(vCols-1, vc));
   const triIndex = [];
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
-      // Zig pattern: pick triangles that create zig-zag rows
       const baseVc = c*2;
       const up = ((r + c) % 2) === 0;
       if (up) triIndex.push({ r,c,upward:true, verts:[ vIndex(r, baseVc+1), vIndex(r+1, baseVc), vIndex(r+1, baseVc+2) ] });
@@ -166,19 +160,16 @@ function buildZigLattice(rows, cols, s, PAD = 8){
   }
   const last = vertices[vertices.length-1];
   const w = last ? last.x + s/2 + PAD : (cols * s + PAD*2);
-  const hPx = (vertexRows - 1) * h + PAD*2 + h;
-  return { vertices, triIndex, w, h: hPx };
+  const H = (vertexRows - 1) * h + PAD*2 + h;
+  return { vertices, triIndex, w, h: H };
 }
 
-/* Diamond-pair lattice for equilateral: simple alternating triangles that pair into rhombuses.
-   We create a grid where each (r,c) triangle alternates; pairs (r,c) and (r,c+1) form diamonds.
-*/
+/* Diamond equilateral lattice: adjacent triangles share full edges so two make a diamond */
 function buildDiamondEqui(rows, cols, s, PAD = 8){
   const h = Math.sqrt(3)/2 * s;
-  const vertices = [];
-  // Build vertices in minimal grid that produces diamonds: (rows+1) x (cols+1) but with half-step columns
   const vertexRows = rows + 1;
   const vertexCols = cols * 2 + 1;
+  const vertices = [];
   for (let vr=0; vr<vertexRows; vr++){
     const y = PAD + vr * h;
     const offset = (vr % 2) ? s/2 : 0;
@@ -187,7 +178,8 @@ function buildDiamondEqui(rows, cols, s, PAD = 8){
       vertices.push({ x,y,vr,vc });
     }
   }
-  const vIndex = (vr,vc) => Math.max(0, Math.min(vertexRows-1, vr)) * (vertexCols) + Math.max(0, Math.min(vertexCols-1, vc));
+  const vCols = vertexCols;
+  const vIndex = (vr,vc) => Math.max(0, Math.min(vertexRows-1, vr)) * vCols + Math.max(0, Math.min(vCols-1, vc));
   const triIndex = [];
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
@@ -204,10 +196,10 @@ function buildDiamondEqui(rows, cols, s, PAD = 8){
 }
 
 function shrinkTriangleVertices(vertsPts, shrinkPx = 0){
-  if (!shrinkPx) return vertsPts.map(v => [v.x, v.y]);
+  if (!shrinkPx) return vertsPts.map(v=>[v.x,v.y]);
   const cx = (vertsPts[0].x + vertsPts[1].x + vertsPts[2].x)/3;
   const cy = (vertsPts[0].y + vertsPts[1].y + vertsPts[2].y)/3;
-  return vertsPts.map(v => {
+  return vertsPts.map(v=>{
     const vx = cx - v.x, vy = cy - v.y;
     const dist = Math.sqrt(vx*vx + vy*vy) || 1;
     const t = Math.min(1, shrinkPx / dist);
@@ -226,30 +218,42 @@ function renderTiledBoard(){
   const rawBase = Math.floor(720 / Math.max(8, cols));
   const baseSize = Math.max(10, Math.min(56, rawBase));
   const tileType = currentTiling || 'square';
+
+  // visual transforms (rigid): read values from settings; if absent, fallback to 1
+  const gapX = Number((document.getElementById('xGapSlider')||{value:1}).value || 1);
+  const gapY = Number((document.getElementById('yGapSlider')||{value:1}).value || 1);
+  const dilation = Number((document.getElementById('dilationSlider')||{value:1}).value || 1);
   const triShrinkVal = Number((document.getElementById('triShrinkSlider')||{value:0}).value || 0);
-  const gapScale = Number((document.getElementById('xGapSlider')||{value:1}).value || 1);
   const shrinkPx = Math.max(0, triShrinkVal);
 
   if (tileType === 'triangle_right'){
     const lattice = buildZigLattice(rows, cols, baseSize, 8);
     const { vertices, triIndex, w: svgW, h: svgH } = lattice;
-    const svg = makeSvgElement('svg', { width: svgW * gapScale, height: svgH, viewBox: `0 0 ${svgW * gapScale} ${svgH}` });
+
+    // apply rigid transforms: scale (dilation) then stretch gaps by scaling coordinates relative to PAD
+    const PAD = 8;
+    const sx = gapX * dilation;
+    const sy = gapY * dilation;
+
+    const svg = makeSvgElement('svg', { width: svgW * sx, height: svgH * sy, viewBox: `0 0 ${svgW * sx} ${svgH * sy}` });
     svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
 
     for (const ti of triIndex){
       const r = ti.r, c = ti.c;
       const vertsPts = ti.verts.map(i => vertices[i] || { x:0, y:0 });
-      const scaled = vertsPts.map(v => ({ x: (v.x - 8) * gapScale + 8, y: v.y }));
-      const pts = shrinkTriangleVertices(scaled, shrinkPx);
-      const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'#0ea5b3', 'stroke-width':1, 'stroke-linejoin':'round', fill:'#022' });
+      const transformed = vertsPts.map(v => ({ x: (v.x - PAD) * sx + PAD * sx, y: (v.y - PAD) * sy + PAD * sy }));
+      const pts = shrinkTriangleVertices(transformed, shrinkPx * dilation);
+      const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'#0ea5b3', 'stroke-width': Math.max(0.6, 1 * dilation), 'stroke-linejoin':'round', fill:'#022' });
       const cell = gameGrid.cells[idx(rows,cols,r,c)];
       if (cell.revealed) poly.setAttribute('fill','#032');
       if (cell.flagged) poly.setAttribute('fill','#041');
       if (cell.mine && cell.revealed) poly.setAttribute('fill','#550');
       poly.classList.add('tile');
+
       const lx = (pts[0][0]+pts[1][0]+pts[2][0])/3;
-      const ly = (pts[0][1]+pts[1][1]+pts[2][1])/3 + 4;
-      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': Math.max(10, baseSize/3) });
+      const ly = (pts[0][1]+pts[1][1]+pts[2][1])/3 + 4 * dilation;
+      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': Math.max(10, (baseSize/3) * dilation) });
+
       if (cell.revealed) {
         if (cell.mine) { label.textContent='💣'; label.setAttribute('fill','#fff'); }
         else if (cell.count>0) { label.textContent=String(cell.count); label.setAttribute('fill', NUMBER_COLORS[cell.count]||'#9be7ff'); }
@@ -271,29 +275,37 @@ function renderTiledBoard(){
     }
 
     appRoot.appendChild(svg);
-    if (debugEnabled) addDebugOverlayRight(lattice, svg, gapScale);
+    if (debugEnabled) addDebugOverlayRight(lattice, svg, gapX, gapY, dilation);
     return;
   }
 
   if (tileType === 'triangle_equi'){
     const lattice = buildDiamondEqui(rows, cols, baseSize, 8);
     const { vertices, triIndex, w: svgW, h: svgH } = lattice;
-    const svg = makeSvgElement('svg', { width: svgW, height: svgH, viewBox: `0 0 ${svgW} ${svgH}` });
+
+    const PAD = 8;
+    const sx = gapX * dilation;
+    const sy = gapY * dilation;
+
+    const svg = makeSvgElement('svg', { width: svgW * sx, height: svgH * sy, viewBox: `0 0 ${svgW * sx} ${svgH * sy}` });
     svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
 
     for (const ti of triIndex){
       const r = ti.r, c = ti.c;
       const vertsPts = ti.verts.map(i => vertices[i] || { x:0, y:0 });
-      const pts = shrinkTriangleVertices(vertsPts, shrinkPx);
-      const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'#0ea5b3', 'stroke-width':1, 'stroke-linejoin':'round', fill:'#022' });
+      const transformed = vertsPts.map(v => ({ x: (v.x - PAD) * sx + PAD * sx, y: (v.y - PAD) * sy + PAD * sy }));
+      const pts = shrinkTriangleVertices(transformed, shrinkPx * dilation);
+      const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'#0ea5b3', 'stroke-width': Math.max(0.6, 1 * dilation), 'stroke-linejoin':'round', fill:'#022' });
       const cell = gameGrid.cells[idx(rows,cols,r,c)];
       if (cell.revealed) poly.setAttribute('fill','#032');
       if (cell.flagged) poly.setAttribute('fill','#041');
       if (cell.mine && cell.revealed) poly.setAttribute('fill','#550');
       poly.classList.add('tile');
+
       const lx = (pts[0][0]+pts[1][0]+pts[2][0])/3;
-      const ly = (pts[0][1]+pts[1][1]+pts[2][1])/3 + 4;
-      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': Math.max(10, baseSize/3) });
+      const ly = (pts[0][1]+pts[1][1]+pts[2][1])/3 + 4 * dilation;
+      const label = makeSvgElement('text', { x: lx, y: ly, 'text-anchor':'middle', 'font-size': Math.max(10, (baseSize/3) * dilation) });
+
       if (cell.revealed) {
         if (cell.mine) { label.textContent='💣'; label.setAttribute('fill','#fff'); }
         else if (cell.count>0) { label.textContent=String(cell.count); label.setAttribute('fill', NUMBER_COLORS[cell.count]||'#9be7ff'); }
@@ -315,33 +327,36 @@ function renderTiledBoard(){
     }
 
     appRoot.appendChild(svg);
-    if (debugEnabled) addDebugOverlayEqui(lattice, svg);
+    if (debugEnabled) addDebugOverlayEqui(lattice, svg, gapX, gapY, dilation);
     return;
   }
 
-  /* square/hex fallback */
-  let centers;
-  let canvasW, canvasH;
-  if (currentTiling === 'hex') { const info = hexCenter(rows, cols, baseSize / 2); centers = info.centers; canvasW = info.w; canvasH = info.h; }
-  else { const info = squareCenter(rows, cols, baseSize); centers = info.centers; canvasW = info.w; canvasH = info.h; }
+  // fallback square / hex (apply dilation + gap transforms via center transforms)
+  const gapX = Number((document.getElementById('xGapSlider')||{value:1}).value || 1);
+  const gapY = Number((document.getElementById('yGapSlider')||{value:1}).value || 1);
+  const dilation = Number((document.getElementById('dilationSlider')||{value:1}).value || 1);
 
-  const svg = makeSvgElement('svg', { width: canvasW, height: canvasH, viewBox: `0 0 ${canvasW} ${canvasH}` });
+  let centersInfo;
+  if (currentTiling === 'hex') centersInfo = hexCenter(gameGrid.rows, gameGrid.cols, (baseSize/2) * dilation);
+  else centersInfo = squareCenter(gameGrid.rows, gameGrid.cols, baseSize * dilation);
+
+  const svg = makeSvgElement('svg', { width: centersInfo.w * gapX, height: centersInfo.h * gapY, viewBox: `0 0 ${centersInfo.w * gapX} ${centersInfo.h * gapY}` });
   svg.style.maxWidth='100%'; svg.style.height='auto'; svg.style.display='block'; svg.style.margin='0 auto';
 
-  for (const cellInfo of centers){
+  for (const cellInfo of centersInfo.centers){
     const r = cellInfo.r, c = cellInfo.c;
-    const cx = cellInfo.x, cy = cellInfo.y;
+    const cx = cellInfo.x * gapX, cy = cellInfo.y * gapY;
     let pts;
-    if (currentTiling === 'hex') pts = computeHexPolygon(cx, cy, baseSize/2);
-    else pts = computeSquarePolygon(cx, cy, baseSize);
+    if (currentTiling === 'hex') pts = computeHexPolygon(cx, cy, (baseSize/2) * dilation);
+    else pts = computeSquarePolygon(cx, cy, baseSize * dilation);
 
-    const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'#0ea5b3', 'stroke-width':1, 'stroke-linejoin':'round', fill:'#022' });
+    const poly = makeSvgElement('polygon', { points: pointsToStr(pts), stroke:'#0ea5b3', 'stroke-width': Math.max(0.6, 1 * dilation), 'stroke-linejoin':'round', fill:'#022' });
     const cell = gameGrid.cells[idx(rows,cols,r,c)];
     if (cell.revealed) poly.setAttribute('fill','#032');
     if (cell.flagged) poly.setAttribute('fill','#041');
     if (cell.mine && cell.revealed) poly.setAttribute('fill','#550');
 
-    const label = makeSvgElement('text', { x: cx, y: cy + 4, 'text-anchor':'middle', 'font-size': Math.max(12, baseSize/3) });
+    const label = makeSvgElement('text', { x: cx, y: cy + 4 * dilation, 'text-anchor': 'middle', 'font-size': Math.max(12, (baseSize/3) * dilation) });
     if (cell.revealed) {
       if (cell.mine) { label.textContent='💣'; label.setAttribute('fill','#fff'); }
       else if (cell.count>0) { label.textContent=String(cell.count); label.setAttribute('fill', NUMBER_COLORS[cell.count]||'#9be7ff'); }
@@ -354,8 +369,8 @@ function renderTiledBoard(){
         const flagged = countFlaggedNeighbors(gameGrid, r, c, currentTiling, currentAdjacency);
         if (flagged === cell.count) {
           const toReveal = revealUnflaggedNeighbors(gameGrid, r, c, currentTiling, currentAdjacency);
-          let exploded = false;
-          for (const [ar,ac] of toReveal){ const res = revealCell(gameGrid, ar, ac, currentTiling, currentAdjacency); if (res.exploded) exploded = true; }
+          let exploded=false;
+          for (const [ar,ac] of toReveal){ const res = revealCell(gameGrid, ar, ac, currentTiling, currentAdjacency); if (res.exploded) exploded=true; }
           if (exploded) { running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); const ms=document.getElementById('msStatus'); if (ms) ms.textContent='BOOM — a mine was revealed during chord'; }
           else { if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; } else { const ms=document.getElementById('msStatus'); if (ms) ms.textContent='Playing...'; } }
           renderTiledBoard(); return;
@@ -377,25 +392,25 @@ function renderTiledBoard(){
   appRoot.appendChild(svg);
 }
 
-/* ---------- Debug overlays ---------- */
-function addDebugOverlayRight(lattice, svg, gapScale){
+/* ---------- debug overlays ---------- */
+function addDebugOverlayRight(lattice, svg, gx, gy, d){
   debugEl = document.createElement('div');
   debugEl.className = 'debug-overlay';
-  debugEl.textContent = `verts:${lattice.vertices.length} tris:${lattice.triIndex.length} gap:${gapScale.toFixed(2)}`;
+  debugEl.textContent = `verts:${lattice.vertices.length} tris:${lattice.triIndex.length} gapX:${gx.toFixed(2)} gapY:${gy.toFixed(2)} zoom:${d.toFixed(2)}`;
   svg.parentNode.insertBefore(debugEl, svg.nextSibling);
 }
-function addDebugOverlayEqui(lattice, svg){
+function addDebugOverlayEqui(lattice, svg, gx, gy, d){
   debugEl = document.createElement('div');
   debugEl.className = 'debug-overlay';
-  debugEl.textContent = `verts:${lattice.vertices.length} tris:${lattice.triIndex.length}`;
+  debugEl.textContent = `verts:${lattice.vertices.length} tris:${lattice.triIndex.length} gapX:${gx.toFixed(2)} gapY:${gy.toFixed(2)} zoom:${d.toFixed(2)}`;
   svg.parentNode.insertBefore(debugEl, svg.nextSibling);
 }
 
-/* ---------- center helpers ---------- */
+/* ---------- centers for fallback ---------- */
 function squareCenter(rows, cols, size){ const PAD=8; const centers=[]; for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){ const x = c*size + size/2 + PAD; const y = r*size + size/2 + PAD; centers.push({r,c,x,y}); } return { centers, w: cols*size + 16, h: rows*size + 16 }; }
 function hexCenter(rows, cols, radius){ const R = radius; const hexWidth = 2*R; const hexHeight = Math.sqrt(3)*R; const xStep = 1.5*R; const yStep = hexHeight; const centers=[]; const PAD=8; for(let r=0;r<rows;r++){ for(let c=0;c<cols;c++){ const x = c*xStep + R + PAD; const y = r*yStep + ((c&1)?(hexHeight/2):0) + R + PAD; centers.push({r,c,x,y}); } } const w = (cols-1)*xStep + hexWidth + PAD*2; const h = (rows-1)*yStep + hexHeight + PAD*2; return { centers, w, h }; }
 
-/* ---------- Controls wiring ---------- */
+/* ---------- controls wiring ---------- */
 function startNewGame(){
   const rows = Math.max(3, Number((document.getElementById('msRows')||{value:9}).value || 9));
   const cols = Math.max(3, Number((document.getElementById('msCols')||{value:9}).value || 9));
@@ -459,7 +474,7 @@ function populateTilingControls(){
   adjSel.__robust_change_handler = adjacencyHandler; adjSel.addEventListener('change', adjacencyHandler);
 }
 
-function applyAdjacencyAction(){ const sel=document.getElementById('tilingSelect'); const adjSel=document.getElementById('adjacencySelect'); if (!sel||!adjSel) return; currentTiling=sel.value; currentAdjacency=adjSel.value; try{ window.currentTiling=currentTiling; window.currentAdjacency=currentAdjacency; }catch(e){}; if (gameGrid){ computeCountsWithAdjacency(gameGrid,currentTiling,currentAdjacency); renderTiledBoard(); const ms=document.getElementById('msStatus'); if (ms) ms.textContent=`Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`; } }
+function applyAdjacencyAction(){ const sel=document.getElementById('tilingSelect'); const adjSel=document.getElementById('adjacencySelect'); if (!sel||!adjSel) return; currentTiling=sel.value; currentAdjacency=adjSel.value; try{ window.currentTiling=currentTiling; window.currentAdjacency=currentAdjacency; }catch(e){}; if (gameGrid){ computeCountsWithAdjacency(gameGrid,currentTiling,currentAdjacency); renderTiledBoard(); const ms=document.getElementById('msStatus'); if (ms) ms.textContent = `Applied ${TILINGS[currentTiling].label} + ${TILINGS[currentTiling].adjacencies[currentAdjacency].label}`; } }
 function newGameAction(){ startNewGame(); }
 
 function initOnceDomReady(){
@@ -469,9 +484,11 @@ function initOnceDomReady(){
   if (applyBtn){ applyBtn.removeEventListener('click', applyAdjacencyAction); applyBtn.addEventListener('click', applyAdjacencyAction); }
   if (newBtn){ newBtn.removeEventListener('click', newGameAction); newBtn.addEventListener('click', newGameAction); }
 
-  const triSlider = document.getElementById('triShrinkSlider'); const xGap = document.getElementById('xGapSlider'); const sizeSlider = document.getElementById('sizeSlider'); const debugBox = document.getElementById('msDebugCheckbox');
+  const triSlider = document.getElementById('triShrinkSlider'); const xGap = document.getElementById('xGapSlider'); const yGap = document.getElementById('yGapSlider'); const dilation = document.getElementById('dilationSlider'); const sizeSlider = document.getElementById('sizeSlider'); const debugBox = document.getElementById('msDebugCheckbox');
   if (triSlider) triSlider.addEventListener('input', ()=>{ const v=triSlider.value; const el=document.getElementById('triShrinkValue'); if (el) el.textContent=v; renderTiledBoard(); });
   if (xGap) xGap.addEventListener('input', ()=>{ const el=document.getElementById('xGapValue'); if (el) el.textContent = Number(xGap.value).toFixed(2); renderTiledBoard(); });
+  if (yGap) yGap.addEventListener('input', ()=>{ const el=document.getElementById('yGapValue'); if (el) el.textContent = Number(yGap.value).toFixed(2); renderTiledBoard(); });
+  if (dilation) dilation.addEventListener('input', ()=>{ const el=document.getElementById('dilationValue'); if (el) el.textContent = Number(dilation.value).toFixed(2); renderTiledBoard(); });
   if (sizeSlider) sizeSlider.addEventListener('input', ()=>{ document.getElementById('msRows').value = sizeSlider.value; document.getElementById('msCols').value = sizeSlider.value; });
 
   if (debugBox) debugBox.addEventListener('change', (e)=>{ debugEnabled = !!e.target.checked; renderTiledBoard(); });
