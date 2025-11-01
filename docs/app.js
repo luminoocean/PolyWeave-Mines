@@ -287,7 +287,7 @@ function squareCenter(rows, cols, size) {
 function triangleCenter(rows, cols, s) {
   const h = Math.sqrt(3)/2 * s;
   const xStep = s / 2;
-  const yStep = .85 * h;
+  const yStep = .70 * h;
   const centers = [];
   const PAD = 8;
   const y0 = PAD + h / 3;
