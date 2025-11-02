@@ -1,4 +1,4 @@
-// state
+// state and constants
 const NUMBER_COLORS = {1:'#3ec7ff',2:'#ff6b6b',3:'#ffd27a',4:'#a88cff',5:'#ff9fb3',6:'#7ce7ff',7:'#d3d3d3',8:'#b0c4de'};
 let gameGrid = null;
 let running = false;
@@ -6,15 +6,15 @@ let firstClick = true;
 let currentAdjacency = 'edges4';
 const view = { scale: 0.6, tx: 0, ty: 0 };
 
-// utils
+// utilities
 function idx(rows,cols,r,c){ return r*cols + c; }
 function inBounds(rows,cols,r,c){ return r>=0 && r<rows && c>=0 && c<cols; }
 function createGrid(rows,cols){ return { rows, cols, cells: Array(rows*cols).fill(0).map(()=>({ mine:false, revealed:false, flagged:false, count:0 })) }; }
 
-// adjacency
+// adjacency offsets
 function squareOffsets(r,c,adj){ return adj==='edges4' ? [[-1,0],[1,0],[0,-1],[0,1]] : [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]; }
 
-// geometry
+// geometry helpers
 function squareCenter(rows,cols,side){
   const PAD = 12; const centers=[];
   for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){
@@ -25,10 +25,11 @@ function squareCenter(rows,cols,side){
   return { centers, w: PAD*2 + cols*side, h: PAD*2 + rows*side };
 }
 
-// rendering
+// svg helpers
 function makeSvg(tag,attrs={}){ const el = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) el.setAttribute(k, String(attrs[k])); return el; }
 function polyPoints(pts){ return pts.map(p=>`${p[0]},${p[1]}`).join(' '); }
 
+// rendering
 function renderBoard(){
   const svg = document.getElementById('minefieldSvg');
   const container = document.getElementById('minefieldContainer');
@@ -37,8 +38,8 @@ function renderBoard(){
 
   const rows = gameGrid.rows, cols = gameGrid.cols;
   const side = Math.max(14, Math.floor(900 / Math.max(12, cols)));
-
   const info = squareCenter(rows,cols,side);
+
   svg.setAttribute('viewBox', `0 0 ${info.w} ${info.h}`);
   svg.setAttribute('width', info.w);
   svg.setAttribute('height', info.h);
@@ -47,14 +48,14 @@ function renderBoard(){
     const r = cell.r, c = cell.c, cx = cell.x, cy = cell.y;
     const s = side/2;
     const pts = [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]];
-    const poly = makeSvg('polygon',{ points: polyPoints(pts), stroke:'var(--accent)', 'stroke-width':1.25, fill:'rgba(2,10,20,0.9)' });
+    const poly = makeSvg('polygon',{ points: polyPoints(pts), stroke:'var(--accent)', 'stroke-width':1.25, fill:'rgba(2,10,20,0.9)', style:'cursor:pointer' });
     const cellObj = gameGrid.cells[idx(rows,cols,r,c)];
     if (cellObj.revealed) poly.setAttribute('fill','rgba(10,28,40,0.95)');
     if (cellObj.flagged) poly.setAttribute('fill','rgba(60,20,20,0.95)');
     if (cellObj.mine && cellObj.revealed) poly.setAttribute('fill','rgba(140,50,40,0.98)');
 
     const fontSize = Math.max(11, Math.floor(side * 0.45));
-    const label = makeSvg('text',{ x: cx, y: cy + Math.floor(fontSize*0.35), 'text-anchor':'middle', 'font-size': fontSize });
+    const label = makeSvg('text',{ x: cx, y: cy + Math.floor(fontSize*0.35), 'text-anchor':'middle', 'font-size': fontSize, style:'pointer-events:none' });
 
     if (cellObj.revealed){
       if (cellObj.mine){ label.textContent='💣'; label.setAttribute('fill','#fff'); }
@@ -62,12 +63,11 @@ function renderBoard(){
     } else if (cellObj.flagged){ label.textContent='🚩'; label.setAttribute('fill','#ffb86b'); }
 
     attachHandlers(poly, r, c);
-    attachHandlers(label, r, c, true);
-
     svg.appendChild(poly);
     svg.appendChild(label);
   }
 
+  // apply transform to container (frame-level transform)
   container.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
   container.style.transformOrigin = 'center center';
 }
@@ -130,9 +130,36 @@ function toggleFlag(grid,r,c){ const {rows,cols,cells}=grid; if(!inBounds(rows,c
 function checkWin(grid){ return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed)); }
 
 // handlers
-function attachHandlers(el,r,c,isLabel=false){
-  el.addEventListener('click', (e)=>{ e.stopPropagation(); if (!running) return; if (firstClick){ const mines = Math.max(1, Number((document.getElementById('msMines')||{value:40}).value || 40)); placeMines(gameGrid, mines, [r,c]); firstClick=false; } const res = revealCell(gameGrid,r,c); if (res.exploded){ running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); document.getElementById('msStatus').textContent='BOOM'; } else { if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; } else document.getElementById('msStatus').textContent='Playing...'; } renderBoard(); });
-  el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); e.stopPropagation(); if (!running) return; toggleFlag(gameGrid,r,c); if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; } renderBoard(); });
+function attachHandlers(el,r,c){
+  // left click
+  el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    if (!running) return;
+    if (firstClick){
+      const mines = Math.max(1, Number((document.getElementById('msMines')||{value:40}).value || 40));
+      placeMines(gameGrid, mines, [r,c]);
+      firstClick=false;
+    }
+    const res = revealCell(gameGrid,r,c);
+    if (res.exploded){
+      running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; });
+      const ms=document.getElementById('msStatus'); if (ms) ms.textContent='BOOM';
+    } else {
+      const ms=document.getElementById('msStatus');
+      if (checkWin(gameGrid)){ running=false; if (ms) ms.textContent='You win!'; }
+      else if (ms) ms.textContent='Playing...';
+    }
+    renderBoard();
+  });
+
+  // right click
+  el.addEventListener('contextmenu', (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    if (!running) return;
+    toggleFlag(gameGrid,r,c);
+    if (checkWin(gameGrid)){ running=false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; }
+    renderBoard();
+  });
 }
 
 // controls
@@ -144,7 +171,7 @@ function startNewGame(){
 
   gameGrid = createGrid(rows,cols);
   running = true; firstClick = true;
-  document.getElementById('msStatus').textContent = 'Ready — first click is safe';
+  const statusEl = document.getElementById('msStatus'); if (statusEl) statusEl.textContent = 'Ready — first click is safe';
   currentAdjacency = (document.getElementById('adjacencySelect')||{}).value || 'edges4';
   renderBoard();
 }
@@ -160,62 +187,73 @@ function wireControls(){
   if (theme) theme.addEventListener('change', ()=>{ document.body.setAttribute('data-theme', theme.value || 'dark-ocean'); renderBoard(); });
 }
 
-// zoom & pan
+// zoom & pan (frame-level)
 function setupZoomPan(){
+  const frame = document.getElementById('minefieldFrame'); // frame captures input anywhere inside window
   const container = document.getElementById('minefieldContainer');
-  if (!container) return;
+  if (!frame || !container) return;
+
   view.scale = 0.6; view.tx = 0; view.ty = 0;
   renderBoard();
 
+  // panning
   let dragging=false, sx=0, sy=0, stx=0, sty=0;
-  container.addEventListener('pointerdown', (e)=>{
-    dragging=true; sx=e.clientX; sy=e.clientY; stx=view.tx; sty=view.ty; container.setPointerCapture && container.setPointerCapture(e.pointerId);
+  frame.addEventListener('pointerdown', (e)=>{
+    // only start drag on primary button or touch
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    dragging=true; sx=e.clientX; sy=e.clientY; stx=view.tx; sty=view.ty;
+    frame.setPointerCapture && frame.setPointerCapture(e.pointerId);
   });
-  container.addEventListener('pointermove', (e)=>{
+  frame.addEventListener('pointermove', (e)=>{
     if (!dragging) return;
-    const dx = e.clientX - sx; const dy = e.clientY - sy;
-    view.tx = stx + dx; view.ty = sty + dy; renderBoard();
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    view.tx = stx + dx; view.ty = sty + dy;
+    renderBoard();
   });
-  function endDrag(e){ dragging=false; container.releasePointerCapture && container.releasePointerCapture(e.pointerId); }
-  container.addEventListener('pointerup', endDrag);
-  container.addEventListener('pointercancel', endDrag);
-  container.addEventListener('pointerleave', endDrag);
+  function endDrag(e){ dragging=false; frame.releasePointerCapture && frame.releasePointerCapture(e.pointerId); }
+  frame.addEventListener('pointerup', endDrag);
+  frame.addEventListener('pointercancel', endDrag);
+  frame.addEventListener('pointerleave', endDrag);
 
-  // pinch (pointer pair)
+  // pinch with pointers (two-finger)
   const pointers = new Map();
   function dist(a,b){ const dx=b.clientX-a.clientX, dy=b.clientY-a.clientY; return Math.hypot(dx,dy); }
-  container.addEventListener('pointerdown', e => pointers.set(e.pointerId,e));
-  container.addEventListener('pointermove', e => {
+  frame.addEventListener('pointerdown', e => pointers.set(e.pointerId,e));
+  frame.addEventListener('pointermove', e => {
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId,e);
     if (pointers.size === 2){
       const it = pointers.values(); const a = it.next().value, b = it.next().value;
       const d = dist(a,b);
-      if (container._lastD == null) container._lastD = d;
-      const ratio = d / container._lastD;
-      container._lastD = d;
+      if (frame._lastD == null) frame._lastD = d;
+      const ratio = d / frame._lastD;
+      frame._lastD = d;
       view.scale = Math.max(0.1, Math.min(6, view.scale * ratio));
       renderBoard();
     }
   });
-  function clearP(e){ pointers.delete(e.pointerId); container._lastD = null; }
-  container.addEventListener('pointerup', clearP);
-  container.addEventListener('pointercancel', clearP);
-  container.addEventListener('pointerout', clearP);
-  container.addEventListener('pointerleave', clearP);
+  function clearP(e){ pointers.delete(e.pointerId); frame._lastD = null; }
+  frame.addEventListener('pointerup', clearP);
+  frame.addEventListener('pointercancel', clearP);
+  frame.addEventListener('pointerout', clearP);
+  frame.addEventListener('pointerleave', clearP);
 
-  // ctrl+wheel zoom (trackpad)
-  container.addEventListener('wheel', e => {
-    if (e.ctrlKey){
+  // wheel zoom anywhere in frame (no ctrl required) + ctrl fallback handled too
+  frame.addEventListener('wheel', (e)=>{
+    // interpret vertical wheel as zoom; horizontal wheel as pan if large horizontal delta
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)){
       const delta = -e.deltaY;
-      const factor = 1 + Math.sign(delta) * Math.min(0.12, Math.abs(delta) / 500);
+      const factor = 1 + Math.sign(delta) * Math.min(0.14, Math.abs(delta) / 600);
       view.scale = Math.max(0.1, Math.min(6, view.scale * factor));
       e.preventDefault();
       renderBoard();
+      return;
     }
+    // otherwise let the wheel do nothing (or future: pan)
   }, { passive:false });
 
-  container.addEventListener('keydown', e => {
+  // keyboard shortcuts
+  frame.addEventListener('keydown', (e)=>{
     if (e.key === '+' || e.key === '='){ view.scale = Math.min(6, view.scale * 1.12); renderBoard(); }
     if (e.key === '-' || e.key === '_'){ view.scale = Math.max(0.1, view.scale / 1.12); renderBoard(); }
     if (e.key === '0'){ view.scale = 1; view.tx=0; view.ty=0; renderBoard(); }
