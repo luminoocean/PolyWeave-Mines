@@ -168,12 +168,12 @@ function computeHexPolygon(cx,cy,radius){ const pts=[]; for (let k=0;k<6;k++){ c
 // --- centers helpers (square / hex / triangle) ---
 function squareCenter(rows, cols, size){ const PAD=8; const centers=[]; for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){ const x = c*size + size/2 + PAD; const y = r*size + size/2 + PAD; centers.push({r,c,x,y}); } return { centers, w: cols*size + 16, h: rows*size + 16 }; }
 function hexCenter(rows, cols, radius){ const R = radius; const hexWidth = 2*R; const hexHeight = Math.sqrt(3)*R; const xStep = 1.5*R; const yStep = hexHeight; const centers=[]; const PAD=8; for(let r=0;r<rows;r++){ for(let c=0;c<cols;c++){ const x = c*xStep + R + PAD; const y = r*yStep + ((c&1)?(hexHeight/2):0) + R + PAD; centers.push({r,c,x,y}); } } const w = (cols-1)*xStep + hexWidth + PAD*2; const h = (rows-1)*yStep + hexHeight + PAD*2; return { centers, w, h }; }
-function triCenter(rows, cols, side){ const h = Math.sqrt(3)/2 * side; const PAD=8; const centers=[]; // interpret rows/cols as triangle cells
+function triCenter(rows, cols, side){ const trih = Math.sqrt(3)/2 * side; const PAD=8; const centers=[]; // interpret rows/cols as triangle cells
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
       // place triangles in a rectangular array where orientation alternates
       const x = PAD + c * (side * 0.5) + (r % 2 ? side*0.25 : 0);
-      const y = PAD + r * (h * 0.5);
+      const y = PAD + r * (trih * 0.5);
       centers.push({ r, c, x, y });
     }
   }
