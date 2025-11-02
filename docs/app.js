@@ -209,6 +209,30 @@ function startNewGame(){
 }
 
 function wireControls(){
+  adj.addEventListener('change', (e)=>{ 
+  currentAdjacency = e.target.value;
+  // Show delete button only for custom adjacencies
+  const deleteBtn = document.getElementById('deleteAdj');
+  if (customAdj[currentAdjacency]) {
+    deleteBtn.style.display = 'block';
+  } else {
+    deleteBtn.style.display = 'none';
+  }
+  // ... rest of handler
+});
+
+document.getElementById('deleteAdj').addEventListener('click', ()=>{
+  if (confirm(`Delete "${currentAdjacency}"?`)) {
+    delete customAdj[currentAdjacency];
+    populateCustomAdjToDropdown();
+    document.getElementById('adjacencySelect').value = 'all8';
+    currentAdjacency = 'all8';
+    document.getElementById('deleteAdj').style.display = 'none';
+    saveAll();
+    renderBoard();
+  }
+});
+
   const newBtn = document.getElementById('newGame');
   if (newBtn){ newBtn.removeEventListener('click', startNewGame); newBtn.addEventListener('click', startNewGame); }
 
