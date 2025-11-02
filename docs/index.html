@@ -3,19 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>PolyWeave Mines — Minesweeper</title>
+  <title>PolyWeave Mines — Tilings Engine</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body data-theme="dark-ocean">
   <div class="controls" role="region" aria-label="Game controls">
     <div class="control-group">
       <label for="msRows">Rows</label>
-      <input id="msRows" type="number" min="3" max="80" value="9" />
+      <input id="msRows" type="number" min="3" max="120" value="9" />
     </div>
 
     <div class="control-group">
       <label for="msCols">Cols</label>
-      <input id="msCols" type="number" min="3" max="80" value="9" />
+      <input id="msCols" type="number" min="3" max="120" value="9" />
     </div>
 
     <div class="control-group">
@@ -34,130 +34,35 @@
     </div>
 
     <div class="control-group">
-      <button id="applyAdjacency" class="ms-btn">Apply adjacency</button>
-      <button id="newGame" class="ms-btn primary">New Game</button>
+      <label for="zoomValue">Zoom</label>
+      <input id="zoomValue" class="value-input" type="text" inputmode="decimal" value="1.00" />
+    </div>
+
+    <div class="control-group">
+      <label for="xGapValue">H gap</label>
+      <input id="xGapValue" class="value-input" type="text" inputmode="decimal" value="1.00" />
+    </div>
+
+    <div class="control-group">
+      <label for="yGapValue">V gap</label>
+      <input id="yGapValue" class="value-input" type="text" inputmode="decimal" value="1.00" />
     </div>
 
     <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
       <div id="msStatus">Ready</div>
-      <button id="msSettingsBtn" class="ms-btn" title="Open settings">Settings</button>
+      <button id="newGame" class="ms-btn primary">New Game</button>
     </div>
   </div>
 
-  <main id="appRoot" role="main" aria-live="polite"></main>
-
-  <!-- Settings modal -->
-  <div id="msSettingsModal" class="ms-modal" aria-hidden="true" role="dialog" aria-modal="true">
-    <div class="ms-modal-panel" role="document">
-      <header class="ms-modal-header">
-        <h3>Display settings</h3>
-        <button id="msSettingsClose" class="ms-close" aria-label="Close settings">✕</button>
-      </header>
-
-      <section class="ms-modal-body">
-        <div class="ms-row">
-          <label for="themeSelect">Theme</label>
-          <select id="themeSelect">
-            <option value="dark-ocean">Dark Ocean</option>
-            <option value="solarized-dark">Solarized Dark</option>
-            <option value="nord">Nord</option>
-            <option value="gruvbox">Gruvbox</option>
-            <option value="dracula">Dracula</option>
-            <option value="high-contrast">High Contrast</option>
-            <option value="soft-light">Soft Light</option>
-            <option value="slate">Slate</option>
-          </select>
-        </div>
-
-        <div class="ms-row">
-          <label for="zoomSlider">Zoom</label>
-          <input id="zoomSlider" type="range" min="0.1" max="2.0" step="0.01" value="1">
-          <input id="zoomValue" class="value-input" type="text" inputmode="decimal" value="1.00" />
-        </div>
-
-        <div class="ms-row">
-          <label for="xGapSlider">Horizontal gap</label>
-          <input id="xGapSlider" type="range" min="0.1" max="4.0" step="0.01" value="1">
-          <input id="xGapValue" class="value-input" type="text" inputmode="decimal" value="1.00" />
-        </div>
-
-        <div class="ms-row">
-          <label for="yGapSlider">Vertical gap</label>
-          <input id="yGapSlider" type="range" min="0.1" max="4.0" step="0.01" value="1">
-          <input id="yGapValue" class="value-input" type="text" inputmode="decimal" value="1.00" />
-        </div>
-
-        <div class="ms-row">
-          <label for="debugToggle">Show debug overlay</label>
-          <input id="debugToggle" type="checkbox" />
-        </div>
-      </section>
-
-      <footer class="ms-modal-footer">
-        <button id="msSettingsApply" class="ms-btn primary">Apply</button>
-        <button id="msSettingsCancel" class="ms-btn">Cancel</button>
-      </footer>
+  <main id="appRoot" role="main" aria-live="polite">
+    <!-- Minefield window: we render the SVG into #minefieldSvg and apply container scaling to .minefield-container -->
+    <div class="minefield-window">
+      <div class="minefield-container" id="minefieldContainer">
+        <svg id="minefieldSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
     </div>
-  </div>
+  </main>
 
   <script src="app.js"></script>
-
-  <script>
-  (function(){
-    const openBtn = document.getElementById('msSettingsBtn');
-    const modal = document.getElementById('msSettingsModal');
-    const closeBtn = document.getElementById('msSettingsClose');
-    const applyBtn = document.getElementById('msSettingsApply');
-    const cancelBtn = document.getElementById('msSettingsCancel');
-
-    const zoomSlider = document.getElementById('zoomSlider');
-    const zoomValue = document.getElementById('zoomValue');
-    const xGapSlider = document.getElementById('xGapSlider');
-    const xGapValue = document.getElementById('xGapValue');
-    const yGapSlider = document.getElementById('yGapSlider');
-    const yGapValue = document.getElementById('yGapValue');
-    const themeSelect = document.getElementById('themeSelect');
-    const debugToggle = document.getElementById('debugToggle');
-
-    function openModal(){ modal.setAttribute('aria-hidden','false'); modal.style.display='grid'; }
-    function closeModal(){ modal.setAttribute('aria-hidden','true'); modal.style.display='none'; }
-
-    if (openBtn) openBtn.addEventListener('click', openModal);
-    if (closeBtn) closeBtn.addEventListener('click', closeModal);
-    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
-
-    function bindRangeToInput(rangeEl, inputEl){
-      if (!rangeEl || !inputEl) return;
-      rangeEl.addEventListener('input', ()=> { inputEl.value = Number(rangeEl.value).toFixed(2); if (typeof window.renderTiledBoard === 'function') window.renderTiledBoard(); });
-      inputEl.addEventListener('keydown', (e)=> { if (e.key === 'Enter') { inputEl.blur(); e.preventDefault(); } });
-    }
-
-    bindRangeToInput(zoomSlider, zoomValue);
-    bindRangeToInput(xGapSlider, xGapValue);
-    bindRangeToInput(yGapSlider, yGapValue);
-
-    if (themeSelect) themeSelect.addEventListener('change', ()=> {
-      document.body.setAttribute('data-theme', themeSelect.value || 'dark-ocean');
-      if (typeof window.renderTiledBoard === 'function') window.renderTiledBoard();
-    });
-
-    if (debugToggle) debugToggle.addEventListener('change', ()=> {
-      if (typeof window.renderTiledBoard === 'function') window.renderTiledBoard();
-    });
-
-    if (applyBtn) applyBtn.addEventListener('click', ()=>{
-      closeModal();
-      try { if (typeof window.renderTiledBoard === 'function') window.renderTiledBoard(); } catch(e){ console.warn(e); }
-    });
-
-    document.addEventListener('keydown', (e)=> { if (e.key === 'Escape') closeModal(); });
-
-    document.addEventListener('DOMContentLoaded', ()=> {
-      if (zoomSlider && zoomValue) zoomValue.value = Number(zoomSlider.value).toFixed(2);
-      if (xGapSlider && xGapValue) xGapValue.value = Number(xGapSlider.value).toFixed(2);
-      if (yGapSlider && yGapValue) yGapValue.value = Number(yGapSlider.value).toFixed(2);
-    });
-  })();
-  </script>
 </body>
 </html>
