@@ -271,30 +271,25 @@ function setupZoomPan(){
 });
 
 
-  frame.addEventListener('pointermove', (e) => {
+frame.addEventListener('pointermove', (e) => {
+  if (maybeDrag && maybeDrag.pointerId === e.pointerId && !dragging){
+    const dx = e.clientX - maybeDrag.startX;
+    const dy = e.clientY - maybeDrag.startY;
     if (Math.hypot(dx, dy) > DRAG_THRESHOLD){
-  dragging = true;
-  frame.setPointerCapture && frame.setPointerCapture(e.pointerId);
-}
-    // handle pointer-based pinch (two pointers) separately below
-    // handle potential drag
-    if (maybeDrag && maybeDrag.pointerId === e.pointerId && !dragging){
-      const dx = e.clientX - maybeDrag.startX;
-      const dy = e.clientY - maybeDrag.startY;
-      if (Math.hypot(dx, dy) > DRAG_THRESHOLD){
-        dragging = true;
-      } else {
-        return; // not beyond threshold; don't interfere
-      }
+      dragging = true;
+      frame.setPointerCapture && frame.setPointerCapture(e.pointerId); // capture here!
+    } else {
+      return;
     }
-    if (dragging && maybeDrag && maybeDrag.pointerId === e.pointerId){
-      const dx = e.clientX - maybeDrag.startX;
-      const dy = e.clientY - maybeDrag.startY;
-      view.tx = maybeDrag.startTx + dx;
-      view.ty = maybeDrag.startTy + dy;
-      renderBoard();
-    }
-  });
+  }
+  if (dragging && maybeDrag && maybeDrag.pointerId === e.pointerId){
+    const dx = e.clientX - maybeDrag.startX;
+    const dy = e.clientY - maybeDrag.startY;
+    view.tx = maybeDrag.startTx + dx;
+    view.ty = maybeDrag.startTy + dy;
+    renderBoard();
+  }
+});
 
   function endPointer(e){
     if (maybeDrag && maybeDrag.pointerId === e.pointerId){
