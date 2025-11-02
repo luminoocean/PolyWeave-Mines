@@ -34,6 +34,20 @@
     </div>
 
     <div class="control-group">
+      <label for="themeSelect">Theme</label>
+      <select id="themeSelect">
+        <option value="dark-ocean">Dark Ocean</option>
+        <option value="solarized-dark">Solarized Dark</option>
+        <option value="nord">Nord</option>
+        <option value="gruvbox">Gruvbox</option>
+        <option value="dracula">Dracula</option>
+        <option value="high-contrast">High Contrast</option>
+        <option value="soft-light">Soft Light</option>
+        <option value="slate">Slate</option>
+      </select>
+    </div>
+
+    <div class="control-group">
       <label for="zoomValue">Zoom</label>
       <input id="zoomValue" class="value-input" type="text" inputmode="decimal" value="1.00" />
     </div>
@@ -55,7 +69,6 @@
   </div>
 
   <main id="appRoot" role="main" aria-live="polite">
-    <!-- Minefield window: we render the SVG into #minefieldSvg and apply container scaling to .minefield-container -->
     <div class="minefield-window">
       <div class="minefield-container" id="minefieldContainer">
         <svg id="minefieldSvg" xmlns="http://www.w3.org/2000/svg"></svg>
