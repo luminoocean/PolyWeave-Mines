@@ -229,7 +229,7 @@ function startNewGame(){
   gameGrid = createGrid(rows, cols);
   running = true; firstClick = true;
   const statusEl = document.getElementById('msStatus'); if (statusEl) statusEl.textContent = 'Ready — first click is safe';
-  currentAdjacency = (document.getElementById('adjacencySelect')||{}).value || 'edges4';
+  currentAdjacency = (document.getElementById('adjacencySelect')||{}).value || 'all8';
   renderBoard();
 }
 
