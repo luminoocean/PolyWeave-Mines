@@ -133,7 +133,7 @@
       inputEl.addEventListener('blur', ()=> {
         let v = Number(inputEl.value);
         if (Number.isNaN(v) || v <= 0) v = Number(rangeEl.value);
-        rangeEl.value = v;
+        rangeEl.value = Math.max(rangeEl.min, Math.min(rangeEl.max, V));
         inputEl.value = Number(rangeEl.value).toFixed(2);
         if (typeof window.renderTiledBoard === 'function') window.renderTiledBoard();
       });
