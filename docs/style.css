@@ -40,6 +40,23 @@ input[type="number"], select{ background: var(--select-bg); border:1px solid rgb
 .minefield-container:active{ cursor:grabbing; }
 #minefieldSvg { display:block; background:transparent; max-width:none; }
 
+/* mobile flag button */
+.mobile-only { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .mobile-only { display: block; }
+}
+#flagMode[aria-pressed="true"] { 
+  background: linear-gradient(#8b2020, #5a1414); 
+  color: #ffb86b; 
+}
+
+/* responsive tweaks */
+@media (max-width: 600px) {
+  .controls { font-size: 12px; padding: 8px; }
+  input[type="number"], select { min-width: 60px; font-size: 12px; }
+  .minefield-frame { height: calc(100vh - 180px); }
+}
+
 /* responsive */
 @media (max-width:760px){
   .controls{ gap:6px; }
