@@ -289,6 +289,17 @@ function wireControls(){
     document.body.setAttribute('data-theme', theme.value || 'dark-ocean');
     renderBoard();
   });
+  const flagBtn = document.getElementById('flagMode');
+if (flagBtn) {
+  let flagMode = false;
+  flagBtn.addEventListener('click', () => {
+    flagMode = !flagMode;
+    flagBtn.setAttribute('aria-pressed', flagMode);
+    document.body.classList.toggle('flag-mode', flagMode);
+  });
+  window.mobileFlag = () => flagMode; // expose for click handler
+}
+
 }
 
 // zoom & pan (frame-level) with click-tolerance + delayed capture
