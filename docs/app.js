@@ -1,10 +1,6 @@
 // app.js
-// Full minimal Minesweeper with:
-// - Autosave settings & game (localStorage)
-// - Custom adjacency editor (15x15) saved to localStorage and added to dropdown
-// - Copy / Paste import-export (base64-encoded JSON)
-// - Mobile flag-mode toggle button
-// - Pan & zoom preserved
+// Updated: ensure custom adjacencies are populated before selecting them on import/load
+// and keep currentAdjacency in sync so chord (chording) behavior remains active.
 
 const NUMBER_COLORS = {1:'#3ec7ff',2:'#ff6b6b',3:'#ffd27a',4:'#a88cff',5:'#ff9fb3',6:'#7ce7ff',7:'#d3d3d3',8:'#b0c4de'};
 
@@ -18,32 +14,26 @@ const view = { scale: 0.6, tx: 0, ty: 0 };
 const STORAGE_KEY = 'polyweave_state_v1';
 const CUSTOM_KEY = 'polyweave_custom_adj_v1';
 
-// utils
 function idx(rows,cols,r,c){ return r*cols + c; }
 function inBounds(rows,cols,r,c){ return r>=0 && r<rows && c>=0 && c<cols; }
 function createGrid(rows,cols){ return { rows, cols, cells: Array(rows*cols).fill(0).map(()=>({ mine:false, revealed:false, flagged:false, count:0 })) }; }
 
-// adjacency registry (built-ins)
 function squareOffsets(r,c,adj){
   if (adj === 'edges4') return [[-1,0],[1,0],[0,-1],[0,1]];
   if (adj === 'all8') return [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-  // custom patterns: stored in customAdj as name -> offsets
   if (customAdj[adj]) return customAdj[adj];
   return [[-1,0],[1,0],[0,-1],[0,1]];
 }
 
-// geometry helpers
 function squareCenter(rows,cols,side){
   const PAD = 12; const centers=[];
   for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){ const x = PAD + c*side + side/2; const y = PAD + r*side + side/2; centers.push({r,c,x,y}); }
   return { centers, w: PAD*2 + cols*side, h: PAD*2 + rows*side };
 }
 
-// svg helpers
 function makeSvg(tag, attrs={}){ const el=document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) el.setAttribute(k, String(attrs[k])); return el; }
 function polyPoints(pts){ return pts.map(p=>`${p[0]},${p[1]}`).join(' '); }
 
-// render
 function renderBoard(){
   const svg = document.getElementById('minefieldSvg');
   const container = document.getElementById('minefieldContainer');
@@ -85,7 +75,6 @@ function renderBoard(){
   container.style.transformOrigin = 'center center';
 }
 
-// game logic
 function computeCounts(grid, adjacency){
   const { rows, cols, cells } = grid;
   for (let r=0;r<rows;r++){
@@ -123,7 +112,6 @@ function placeMines(grid, mineCount, safe){
   computeCounts(grid,currentAdjacency);
 }
 
-// reveal/flag/chord & helpers
 function revealCell(grid,r,c){
   const { rows, cols, cells } = grid;
   if (!inBounds(rows,cols,r,c)) return { changed:[], exploded:false };
@@ -148,23 +136,18 @@ function toggleFlag(grid,r,c){ const {rows,cols,cells}=grid; if (!inBounds(rows,
 function checkWin(grid){ return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed)); }
 function countFlaggedNeighbors(grid,r,c){ let count=0; for (const [dr,dc] of squareOffsets(r,c,currentAdjacency)){ const rr=r+dr, cc=c+dc; if (!inBounds(grid.rows,grid.cols,rr,cc)) continue; if (grid.cells[idx(grid.rows,grid.cols,rr,cc)].flagged) count++; } return count; }
 
-// handlers
 function attachHandlers(el,r,c){
   el.addEventListener('click', (e)=>{
     e.stopPropagation();
     if (!running) return;
 
-    // mobile flag-mode check
     const flagModeActive = document.body.classList.contains('flag-mode');
     if (flagModeActive){
       toggleFlag(gameGrid,r,c);
       if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; }
-      saveAll();
-      renderBoard();
-      return;
+      saveAll(); renderBoard(); return;
     }
 
-    // chord behavior
     const cellObjNow = gameGrid.cells[idx(gameGrid.rows,gameGrid.cols,r,c)];
     if (cellObjNow.revealed && cellObjNow.count > 0){
       const flagged = countFlaggedNeighbors(gameGrid,r,c);
@@ -173,9 +156,7 @@ function attachHandlers(el,r,c){
         for (const [dr,dc] of squareOffsets(r,c,currentAdjacency)){
           const rr=r+dr, cc=c+dc; if (!inBounds(gameGrid.rows,gameGrid.cols,rr,cc)) continue;
           const neigh = gameGrid.cells[idx(gameGrid.rows,gameGrid.cols,rr,cc)];
-          if (!neigh.flagged && !neigh.revealed){
-            const res = revealCell(gameGrid,rr,cc); if (res.exploded) exploded=true;
-          }
+          if (!neigh.flagged && !neigh.revealed){ const res = revealCell(gameGrid,rr,cc); if (res.exploded) exploded=true; }
         }
         if (exploded){ running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); document.getElementById('msStatus').textContent='BOOM'; }
         else { if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; } }
@@ -184,11 +165,7 @@ function attachHandlers(el,r,c){
       return;
     }
 
-    if (firstClick){
-      const mines = Math.max(1, Number((document.getElementById('msMines')||{value:40}).value || 40));
-      placeMines(gameGrid, mines, [r,c]);
-      firstClick = false;
-    }
+    if (firstClick){ const mines = Math.max(1, Number((document.getElementById('msMines')||{value:40}).value || 40)); placeMines(gameGrid, mines, [r,c]); firstClick = false; }
     const res = revealCell(gameGrid,r,c);
     if (res.exploded){ running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); document.getElementById('msStatus').textContent='BOOM'; }
     else { if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; } else document.getElementById('msStatus').textContent='Playing...'; }
@@ -198,7 +175,6 @@ function attachHandlers(el,r,c){
   el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); e.stopPropagation(); if (!running) return; toggleFlag(gameGrid,r,c); if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; } saveAll(); renderBoard(); });
 }
 
-// controls & UI wiring
 function startNewGame(){
   const rows = Math.max(3, Number((document.getElementById('msRows')||{value:12}).value || 12));
   const cols = Math.max(3, Number((document.getElementById('msCols')||{value:16}).value || 16));
@@ -221,33 +197,18 @@ function wireControls(){
   document.getElementById('adjacencySelect').addEventListener('change', (e)=>{ currentAdjacency = e.target.value; computeCounts(gameGrid,currentAdjacency); persistSettings(); renderBoard(); saveAll(); });
   document.getElementById('themeSelect').addEventListener('change', (e)=>{ document.body.setAttribute('data-theme', e.target.value || 'dark-ocean'); persistSettings(); saveAll(); renderBoard(); });
 
-  // flag-mode button
   const flagBtn = document.getElementById('flagMode');
-  if (flagBtn){
-    flagBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); const on = document.body.classList.toggle('flag-mode'); flagBtn.setAttribute('aria-pressed', on); });
-  }
+  if (flagBtn){ flagBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); const on = document.body.classList.toggle('flag-mode'); flagBtn.setAttribute('aria-pressed', on); }); }
 
-  // copy / paste
   document.getElementById('copyGame').addEventListener('click', ()=>{ const s = exportStateString(); navigator.clipboard.writeText(s).then(()=>{ flashStatus('Copied'); }).catch(()=>{ flashStatus('Copy failed'); }); });
   document.getElementById('pasteGame').addEventListener('click', ()=>{ openPasteModal(); });
-
-  // adjacency editor open
   document.getElementById('openAdjEditor').addEventListener('click', ()=>{ openAdjModal(); });
-
-  // modal close handlers
   document.getElementById('closeAdj').addEventListener('click', ()=>{ closeAdjModal(); });
   document.getElementById('closePaste').addEventListener('click', ()=>{ closePasteModal(); });
-
-  // import button
   document.getElementById('importBtn').addEventListener('click', ()=>{ const v = document.getElementById('pasteInput').value.trim(); try{ importStateString(v); closePasteModal(); flashStatus('Imported'); } catch(e){ flashStatus('Invalid code'); } });
-
-  // preview start
   document.getElementById('previewStart').addEventListener('click', ()=>{ startPreview(); });
-
-  // editor controls wired in initEditor()
 }
 
-// autosave / persistence
 function persistSettings(){
   const settings = {
     rows: Number((document.getElementById('msRows')||{value:12}).value),
@@ -286,28 +247,37 @@ function saveAll(){
 
 function loadAll(){
   try{
+    // load custom patterns first so dropdown can be built before selecting adjacency
     const savedCustom = JSON.parse(localStorage.getItem(CUSTOM_KEY) || '{}');
     if (savedCustom && typeof savedCustom === 'object'){ customAdj = savedCustom; populateCustomAdjToDropdown(); }
+
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     const settingsRaw = JSON.parse(localStorage.getItem(STORAGE_KEY + '_settings') || 'null');
+
     if (settingsRaw){
       document.getElementById('msRows').value = settingsRaw.rows;
       document.getElementById('msCols').value = settingsRaw.cols;
       document.getElementById('msMines').value = settingsRaw.mines;
       document.getElementById('adjacencySelect').value = settingsRaw.adjacency || 'all8';
+      currentAdjacency = settingsRaw.adjacency || 'all8';
       document.getElementById('themeSelect').value = settingsRaw.theme || 'dark-ocean';
       document.body.setAttribute('data-theme', settingsRaw.theme || 'dark-ocean');
     }
+
     if (!raw) return;
-    if (raw.customAdj) { customAdj = raw.customAdj; populateCustomAdjToDropdown(); }
+
+    if (raw.customAdj){ customAdj = raw.customAdj; populateCustomAdjToDropdown(); }
+
     if (raw.settings){
       document.getElementById('msRows').value = raw.settings.rows;
       document.getElementById('msCols').value = raw.settings.cols;
       document.getElementById('msMines').value = raw.settings.mines;
       document.getElementById('adjacencySelect').value = raw.settings.adjacency || 'all8';
+      currentAdjacency = raw.settings.adjacency || 'all8';
       document.getElementById('themeSelect').value = raw.settings.theme || 'dark-ocean';
       document.body.setAttribute('data-theme', raw.settings.theme || 'dark-ocean');
     }
+
     if (raw.game){
       const s = raw.game;
       const r = raw.settings ? raw.settings.rows : Number(document.getElementById('msRows').value);
@@ -324,9 +294,7 @@ function loadAll(){
   }catch(e){ console.warn('load failed', e); }
 }
 
-// copy / paste export-import
 function exportStateString(){
-  // compact state: settings + game arrays + customAdj
   const settings = {
     rows: Number(document.getElementById('msRows').value),
     cols: Number(document.getElementById('msCols').value),
@@ -347,16 +315,22 @@ function exportStateString(){
 function importStateString(str){
   const json = JSON.parse(decodeURIComponent(escape(atob(str))));
   if (!json || !json.s) throw new Error('invalid');
-  // apply settings
+
+  // populate custom patterns first so dropdown can select them
+  if (json.custom){
+    customAdj = json.custom;
+    populateCustomAdjToDropdown();
+  }
+
+  // apply settings and sync currentAdjacency (important for chording)
   document.getElementById('msRows').value = json.s.rows;
   document.getElementById('msCols').value = json.s.cols;
   document.getElementById('msMines').value = json.s.mines;
   document.getElementById('adjacencySelect').value = json.s.adjacency || 'all8';
+  currentAdjacency = json.s.adjacency || 'all8';
   document.getElementById('themeSelect').value = json.s.theme || 'dark-ocean';
   document.body.setAttribute('data-theme', json.s.theme || 'dark-ocean');
-  // custom patterns
-  if (json.custom){ customAdj = json.custom; populateCustomAdjToDropdown(); }
-  // game
+
   if (json.g){
     const r = json.s.rows, c = json.s.cols;
     gameGrid = createGrid(r,c);
@@ -370,7 +344,6 @@ function importStateString(str){
   saveAll(); renderBoard();
 }
 
-// helper: small status flash
 function flashStatus(txt){
   const el = document.getElementById('msStatus');
   if (!el) return;
@@ -379,20 +352,11 @@ function flashStatus(txt){
   setTimeout(()=> el.textContent = prev, 1200);
 }
 
-// adjacency editor modal
-function openAdjModal(){
-  document.getElementById('adjModal').setAttribute('aria-hidden','false');
-  document.querySelectorAll('#adjModal .tab').forEach(t=> t.classList.remove('active'));
-  document.querySelector('#adjModal .tab[data-tab="editor"]').classList.add('active');
-  document.querySelectorAll('#adjModal .tabpane').forEach(p=> p.classList.remove('active'));
-  document.getElementById('editorTab').classList.add('active');
-  initEditorGrid();
-}
+function openAdjModal(){ document.getElementById('adjModal').setAttribute('aria-hidden','false'); document.querySelectorAll('#adjModal .tab').forEach(t=> t.classList.remove('active')); document.querySelector('#adjModal .tab[data-tab="editor"]').classList.add('active'); document.querySelectorAll('#adjModal .tabpane').forEach(p=> p.classList.remove('active')); document.getElementById('editorTab').classList.add('active'); initEditorGrid(); }
 function closeAdjModal(){ document.getElementById('adjModal').setAttribute('aria-hidden','true'); }
 function openPasteModal(){ document.getElementById('pasteModal').setAttribute('aria-hidden','false'); }
 function closePasteModal(){ document.getElementById('pasteModal').setAttribute('aria-hidden','true'); }
 
-// init editor grid (15x15)
 function initEditorGrid(){
   const gridEl = document.getElementById('editorGrid');
   gridEl.innerHTML = '';
@@ -407,20 +371,12 @@ function initEditorGrid(){
       gridEl.appendChild(cell);
     }
   }
-  // wire editor controls
   document.getElementById('clearAdj').onclick = clearEditor;
   document.getElementById('saveAdj').onclick = saveEditorPattern;
 }
 
-// editor helpers
-function editorToggleCell(e){
-  const el = e.currentTarget;
-  if (el.dataset.center) return;
-  el.classList.toggle('on');
-}
-function clearEditor(){
-  document.querySelectorAll('#editorGrid .editor-cell.on').forEach(x=> x.classList.remove('on'));
-}
+function editorToggleCell(e){ const el = e.currentTarget; if (el.dataset.center) return; el.classList.toggle('on'); }
+function clearEditor(){ document.querySelectorAll('#editorGrid .editor-cell.on').forEach(x=> x.classList.remove('on')); }
 function saveEditorPattern(){
   const size = 15; const cx = Math.floor(size/2), cy = Math.floor(size/2);
   const nodes = [];
@@ -430,7 +386,6 @@ function saveEditorPattern(){
   });
   const nameInput = document.getElementById('adjName');
   let name = (nameInput && nameInput.value && nameInput.value.trim()) || `custom_${Date.now()}`;
-  // ensure unique
   let i = 1; while (customAdj[name]){ name = `${name}_${i++}`; }
   customAdj[name] = nodes;
   populateCustomAdjToDropdown();
@@ -439,12 +394,9 @@ function saveEditorPattern(){
   nameInput.value = '';
 }
 
-// populate user patterns into adjacency dropdown
 function populateCustomAdjToDropdown(){
   const sel = document.getElementById('adjacencySelect');
-  // remove previous custom options
   Array.from(sel.querySelectorAll('option[data-custom="1"]')).forEach(o=> o.remove());
-  // append
   for (const key of Object.keys(customAdj || {})){
     const opt = document.createElement('option');
     opt.value = key; opt.textContent = key;
@@ -453,7 +405,6 @@ function populateCustomAdjToDropdown(){
   }
 }
 
-// preview small minesweeper in modal
 let previewGame = null;
 function startPreview(){
   const pr = Number(document.getElementById('previewRows').value || 9);
@@ -484,13 +435,8 @@ function renderPreview(grid, hostId){
   }
 }
 
-// copy / import helpers UI
-function openPasteModalWithText(text){
-  document.getElementById('pasteInput').value = text || '';
-  openPasteModal();
-}
+function openPasteModalWithText(text){ document.getElementById('pasteInput').value = text || ''; openPasteModal(); }
 
-// init & zoom/pan (frame-level)
 function setupZoomPan(){
   const frame = document.getElementById('minefieldFrame');
   const container = document.getElementById('minefieldContainer');
@@ -498,7 +444,6 @@ function setupZoomPan(){
   view.scale = 0.6; view.tx = 0; view.ty = 0;
   renderBoard();
 
-  // panning with delayed capture
   let dragging=false, maybeDrag=null; const DRAG_THRESHOLD=6;
   frame.addEventListener('pointerdown', (e)=>{ if (e.pointerType==='mouse' && e.button !== 0) return; maybeDrag = {pointerId:e.pointerId, startX:e.clientX, startY:e.clientY, startTx:view.tx, startTy:view.ty}; });
   frame.addEventListener('pointermove', (e)=>{
@@ -507,15 +452,11 @@ function setupZoomPan(){
       if (Math.hypot(dx,dy) > DRAG_THRESHOLD){ dragging=true; frame.setPointerCapture && frame.setPointerCapture(e.pointerId); }
       else return;
     }
-    if (dragging && maybeDrag && maybeDrag.pointerId === e.pointerId){
-      const dx = e.clientX - maybeDrag.startX, dy = e.clientY - maybeDrag.startY;
-      view.tx = maybeDrag.startTx + dx; view.ty = maybeDrag.startTy + dy; renderBoard();
-    }
+    if (dragging && maybeDrag && maybeDrag.pointerId === e.pointerId){ const dx = e.clientX - maybeDrag.startX, dy = e.clientY - maybeDrag.startY; view.tx = maybeDrag.startTx + dx; view.ty = maybeDrag.startTy + dy; renderBoard(); }
   });
   function endPointer(e){ if (maybeDrag && maybeDrag.pointerId === e.pointerId){ dragging=false; maybeDrag=null; frame.releasePointerCapture && frame.releasePointerCapture(e.pointerId); } }
   frame.addEventListener('pointerup', endPointer); frame.addEventListener('pointercancel', endPointer); frame.addEventListener('pointerleave', endPointer);
 
-  // pinch with two pointers
   const pointers = new Map();
   function dist(a,b){ const dx=b.clientX - a.clientX, dy = b.clientY - a.clientY; return Math.hypot(dx,dy); }
   frame.addEventListener('pointerdown', e=> pointers.set(e.pointerId,e));
@@ -523,14 +464,11 @@ function setupZoomPan(){
   function clearPointer(e){ pointers.delete(e.pointerId); frame._lastD = null; }
   frame.addEventListener('pointerup', clearPointer); frame.addEventListener('pointercancel', clearPointer); frame.addEventListener('pointerout', clearPointer); frame.addEventListener('pointerleave', clearPointer);
 
-  // wheel zoom anywhere in frame
   frame.addEventListener('wheel', (e)=>{ if (Math.abs(e.deltaY) > Math.abs(e.deltaX)){ const delta = -e.deltaY; const factor = 1 + Math.sign(delta) * Math.min(0.14, Math.abs(delta)/600); view.scale = Math.max(0.1, Math.min(6, view.scale * factor)); e.preventDefault(); renderBoard(); return; } }, { passive:false });
 
-  // keyboard
   frame.addEventListener('keydown', (e)=>{ if (e.key === '+' || e.key === '='){ view.scale = Math.min(6, view.scale * 1.12); renderBoard(); } if (e.key === '-' || e.key === '_'){ view.scale = Math.max(0.1, view.scale / 1.12); renderBoard(); } if (e.key === '0'){ view.scale = 1; view.tx=0; view.ty=0; renderBoard(); } });
 }
 
-// startup
 function init(){
   loadAll();
   wireControls();
@@ -539,12 +477,10 @@ function init(){
   if (!gameGrid) startNewGame();
   renderBoard();
 
-  // modal tab switching
   document.querySelectorAll('#adjModal .tab').forEach(btn=>{
     btn.addEventListener('click', ()=>{ document.querySelectorAll('#adjModal .tab').forEach(t=>t.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('#adjModal .tabpane').forEach(p=>p.classList.remove('active')); document.getElementById(btn.dataset.tab + 'Tab').classList.add('active'); });
   });
 
-  // clicking outside paste modal closes it
   document.getElementById('pasteModal').addEventListener('click', (e)=>{ if (e.target === e.currentTarget) closePasteModal(); });
   document.getElementById('adjModal').addEventListener('click', (e)=>{ if (e.target === e.currentTarget) closeAdjModal(); });
 }
