@@ -1,5 +1,7 @@
 // app.js
 // Sections: state, utils, adjacency, geometry, render, game logic, controls, zoom/pan, init
+// Mobile flag-mode integrated: a flag button toggles "flag-mode" class on <body>
+// When flag-mode is active, primary taps/left clicks will flag instead of reveal
 
 const NUMBER_COLORS = {1:'#3ec7ff',2:'#ff6b6b',3:'#ffd27a',4:'#a88cff',5:'#ff9fb3',6:'#7ce7ff',7:'#d3d3d3',8:'#b0c4de'};
 
@@ -203,6 +205,16 @@ function attachHandlers(el, r, c){
     e.stopPropagation();
     if (!running) return;
 
+    // If body has class 'flag-mode' (mobile flag toggle), treat a primary click/tap as a flag action
+    const flagModeActive = document.body.classList.contains('flag-mode');
+    if (flagModeActive){
+      // Toggle flag on tap
+      toggleFlag(gameGrid, r, c);
+      if (checkWin(gameGrid)){ running = false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; }
+      renderBoard();
+      return;
+    }
+
     // chord behavior: if this cell is revealed and numbered, and flagged count matches, reveal neighbors
     const cellObjNow = gameGrid.cells[idx(gameGrid.rows, gameGrid.cols, r, c)];
     if (cellObjNow.revealed && cellObjNow.count > 0){
@@ -228,7 +240,7 @@ function attachHandlers(el, r, c){
         renderBoard();
         return;
       }
-      // if flagged count doesn't match, allow a normal click below (no-op because it's revealed)
+      // if flagged count doesn't match, click does nothing (as it's revealed)
       return;
     }
 
@@ -289,17 +301,29 @@ function wireControls(){
     document.body.setAttribute('data-theme', theme.value || 'dark-ocean');
     renderBoard();
   });
-  const flagBtn = document.getElementById('flagMode');
-if (flagBtn) {
-  let flagMode = false;
-  flagBtn.addEventListener('click', () => {
-    flagMode = !flagMode;
-    flagBtn.setAttribute('aria-pressed', flagMode);
-    document.body.classList.toggle('flag-mode', flagMode);
-  });
-  window.mobileFlag = () => flagMode; // expose for click handler
-}
 
+  // Mobile flag-mode button wiring
+  const flagBtn = document.getElementById('flagMode');
+  if (flagBtn){
+    // start with false; add behavior to toggle a class on body
+    flagBtn.setAttribute('aria-pressed', 'false');
+    function setFlagMode(on){
+      if (on){
+        flagBtn.setAttribute('aria-pressed','true');
+        document.body.classList.add('flag-mode');
+      } else {
+        flagBtn.setAttribute('aria-pressed','false');
+        document.body.classList.remove('flag-mode');
+      }
+    }
+    let fm = false;
+    flagBtn.addEventListener('click', ()=>{
+      fm = !fm;
+      setFlagMode(fm);
+    });
+    // Expose a getter for debugging or other scripts
+    window.getFlagMode = () => fm;
+  }
 }
 
 // zoom & pan (frame-level) with click-tolerance + delayed capture
