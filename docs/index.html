@@ -130,13 +130,6 @@
       if (!rangeEl || !inputEl) return;
       rangeEl.addEventListener('input', ()=> { inputEl.value = Number(rangeEl.value).toFixed(2); if (typeof window.renderTiledBoard === 'function') window.renderTiledBoard(); });
       inputEl.addEventListener('keydown', (e)=> { if (e.key === 'Enter') { inputEl.blur(); e.preventDefault(); } });
-      inputEl.addEventListener('blur', ()=> {
-        let v = Number(inputEl.value);
-        if (Number.isNaN(v) || v <= 0) v = Number(rangeEl.value);
-        rangeEl.value = Math.max(rangeEl.min, Math.min(rangeEl.max, V));
-        inputEl.value = Number(rangeEl.value).toFixed(2);
-        if (typeof window.renderTiledBoard === 'function') window.renderTiledBoard();
-      });
     }
 
     bindRangeToInput(zoomSlider, zoomValue);
