@@ -6,7 +6,7 @@ const NUMBER_COLORS = {1:'#3ec7ff',2:'#ff6b6b',3:'#ffd27a',4:'#a88cff',5:'#ff9fb
 let gameGrid = null;
 let running = false;
 let firstClick = true;
-let currentAdjacency = 'edges4';
+let currentAdjacency = 'all8';
 
 const view = { scale: 0.6, tx: 0, ty: 0 };
 
@@ -83,7 +83,7 @@ function renderBoard(){
       y: cy + Math.floor(fontSize * 0.35),
       'text-anchor': 'middle',
       'font-size': fontSize,
-      style: 'pointer-events:none'
+      style: 'pointer-events:none; user-select:none'
     });
 
     if (cellObj.revealed){
@@ -202,6 +202,36 @@ function attachHandlers(el, r, c){
   el.addEventListener('click', (e) => {
     e.stopPropagation();
     if (!running) return;
+
+    // chord behavior: if this cell is revealed and numbered, and flagged count matches, reveal neighbors
+    const cellObjNow = gameGrid.cells[idx(gameGrid.rows, gameGrid.cols, r, c)];
+    if (cellObjNow.revealed && cellObjNow.count > 0){
+      const flagged = countFlaggedNeighbors(gameGrid, r, c);
+      if (flagged === cellObjNow.count){
+        let exploded = false;
+        for (const [dr,dc] of squareOffsets(r,c,currentAdjacency)){
+          const rr = r + dr, cc = c + dc;
+          if (!inBounds(gameGrid.rows, gameGrid.cols, rr, cc)) continue;
+          const neigh = gameGrid.cells[idx(gameGrid.rows, gameGrid.cols, rr, cc)];
+          if (!neigh.flagged && !neigh.revealed){
+            const res = revealCell(gameGrid, rr, cc);
+            if (res.exploded) exploded = true;
+          }
+        }
+        if (exploded){
+          running = false;
+          gameGrid.cells.forEach(cl => { if (cl.mine) cl.revealed = true; });
+          const ms = document.getElementById('msStatus'); if (ms) ms.textContent = 'BOOM';
+        } else {
+          if (checkWin(gameGrid)){ running = false; const ms=document.getElementById('msStatus'); if (ms) ms.textContent='You win!'; }
+        }
+        renderBoard();
+        return;
+      }
+      // if flagged count doesn't match, allow a normal click below (no-op because it's revealed)
+      return;
+    }
+
     if (firstClick){
       const mines = Math.max(1, Number((document.getElementById('msMines')||{value:40}).value || 40));
       placeMines(gameGrid, mines, [r,c]);
@@ -219,31 +249,6 @@ function attachHandlers(el, r, c){
     }
     renderBoard();
   });
-// chord click on revealed numbered cell
-if (!firstClick && cellObj.revealed && cellObj.count > 0){
-  const flaggedCount = countFlaggedNeighbors(gameGrid, r, c);
-  if (flaggedCount === cellObj.count){
-    const offsets = squareOffsets(r, c, currentAdjacency);
-    let exploded = false;
-    for (const [dr,dc] of offsets){
-      const rr = r + dr, cc = c + dc;
-      if (!inBounds(gameGrid.rows, gameGrid.cols, rr, cc)) continue;
-      const neighbor = gameGrid.cells[idx(gameGrid.rows, gameGrid.cols, rr, cc)];
-      if (!neighbor.flagged && !neighbor.revealed){
-        const res = revealCell(gameGrid, rr, cc);
-        if (res.exploded) exploded = true;
-      }
-    }
-    if (exploded){
-      running = false;
-      gameGrid.cells.forEach(cl => { if (cl.mine) cl.revealed = true; });
-      const ms = document.getElementById('msStatus'); if (ms) ms.textContent = 'BOOM - chord fail';
-    }
-    renderBoard();
-    return;
-  }
-  return; // clicked a number but flag count doesn't match
-}
 
   el.addEventListener('contextmenu', (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -286,9 +291,9 @@ function wireControls(){
   });
 }
 
-// zoom & pan (frame-level) with click-tolerance
+// zoom & pan (frame-level) with click-tolerance + delayed capture
 function setupZoomPan(){
-  const frame = document.getElementById('minefieldFrame'); // frame captures input anywhere inside the minefield window
+  const frame = document.getElementById('minefieldFrame');
   const container = document.getElementById('minefieldContainer');
   if (!frame || !container) return;
 
@@ -301,34 +306,33 @@ function setupZoomPan(){
   const DRAG_THRESHOLD = 6;
 
   frame.addEventListener('pointerdown', (e) => {
-  if (e.pointerType === 'mouse' && e.button !== 0) return;
-  maybeDrag = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, startTx: view.tx, startTy: view.ty };
-});
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    maybeDrag = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, startTx: view.tx, startTy: view.ty };
+    // don't capture yet; capture only after we detect a real drag
+  });
 
-
-frame.addEventListener('pointermove', (e) => {
-  if (maybeDrag && maybeDrag.pointerId === e.pointerId && !dragging){
-    const dx = e.clientX - maybeDrag.startX;
-    const dy = e.clientY - maybeDrag.startY;
-    if (Math.hypot(dx, dy) > DRAG_THRESHOLD){
-      dragging = true;
-      frame.setPointerCapture && frame.setPointerCapture(e.pointerId); // capture here!
-    } else {
-      return;
+  frame.addEventListener('pointermove', (e) => {
+    if (maybeDrag && maybeDrag.pointerId === e.pointerId && !dragging){
+      const dx = e.clientX - maybeDrag.startX;
+      const dy = e.clientY - maybeDrag.startY;
+      if (Math.hypot(dx, dy) > DRAG_THRESHOLD){
+        dragging = true;
+        frame.setPointerCapture && frame.setPointerCapture(e.pointerId); // capture once dragging starts
+      } else {
+        return; // not past threshold, allow clicks to register
+      }
     }
-  }
-  if (dragging && maybeDrag && maybeDrag.pointerId === e.pointerId){
-    const dx = e.clientX - maybeDrag.startX;
-    const dy = e.clientY - maybeDrag.startY;
-    view.tx = maybeDrag.startTx + dx;
-    view.ty = maybeDrag.startTy + dy;
-    renderBoard();
-  }
-});
+    if (dragging && maybeDrag && maybeDrag.pointerId === e.pointerId){
+      const dx = e.clientX - maybeDrag.startX;
+      const dy = e.clientY - maybeDrag.startY;
+      view.tx = maybeDrag.startTx + dx;
+      view.ty = maybeDrag.startTy + dy;
+      renderBoard();
+    }
+  });
 
   function endPointer(e){
     if (maybeDrag && maybeDrag.pointerId === e.pointerId){
-      // if dragging never started, let the click event proceed to underlying SVG polygons
       dragging = false;
       maybeDrag = null;
       frame.releasePointerCapture && frame.releasePointerCapture(e.pointerId);
@@ -364,7 +368,6 @@ frame.addEventListener('pointermove', (e) => {
 
   // wheel zoom anywhere in frame (vertical scroll -> zoom)
   frame.addEventListener('wheel', (e) => {
-    // vertical wheel -> zoom, horizontal can be ignored or used for pan later
     if (Math.abs(e.deltaY) > Math.abs(e.deltaX)){
       const delta = -e.deltaY;
       const factor = 1 + Math.sign(delta) * Math.min(0.14, Math.abs(delta) / 600);
