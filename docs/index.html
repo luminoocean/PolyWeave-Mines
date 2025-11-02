@@ -48,11 +48,6 @@
     </div>
 
     <div class="control-group">
-      <label for="zoomValue">Zoom</label>
-      <input id="zoomValue" class="value-input" type="text" inputmode="decimal" value="1.00" />
-    </div>
-
-    <div class="control-group">
       <label for="xGapValue">H gap</label>
       <input id="xGapValue" class="value-input" type="text" inputmode="decimal" value="1.00" />
     </div>
@@ -69,10 +64,10 @@
   </div>
 
   <main id="appRoot" role="main" aria-live="polite">
-    <div class="minefield-window">
+    <div class="minefield-window" id="minefieldWindow">
       <div class="minefield-shell">
         <div class="minefield-frame">
-          <div class="minefield-container" id="minefieldContainer">
+          <div class="minefield-container" id="minefieldContainer" tabindex="0" aria-label="Minefield. Pinch or use trackpad/ctrl+wheel to zoom.">
             <svg id="minefieldSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin meet"></svg>
           </div>
         </div>
