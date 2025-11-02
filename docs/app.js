@@ -224,7 +224,7 @@ function renderTiledBoard(){
   const tileType = currentTiling || 'square';
 
   // UI state (read fresh each render)
-  const zoom = Math.max(0.1, Math.min(2.0, Number((document.getElementById('zoomSlider')||{value:1}).value || 1)));
+  const zoom = Math.max(0.1, Math.min(2.0, Number((document.getElementById('zoomValue')||{value:1}).value || 1)));
   const gapX = Math.max(0.1, Number((document.getElementById('xGapValue')||{value:1}).value || 1));
   const gapY = Math.max(0.1, Number((document.getElementById('yGapValue')||{value:1}).value || 1));
   debugEnabled = !!(document.getElementById('debugToggle') && document.getElementById('debugToggle').checked);
