@@ -1,3 +1,3 @@
 # PolyWeave-Mines
-https://luminoocean.github.io/PolyWeave-Mines/          
+https://jackfshields.github.io/PolyWeave-Mines/          
 minesweeper with customizable adjacency rules.
