@@ -266,12 +266,16 @@ function setupZoomPan(){
   const DRAG_THRESHOLD = 6;
 
   frame.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    maybeDrag = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, startTx: view.tx, startTy: view.ty };
-    frame.setPointerCapture && frame.setPointerCapture(e.pointerId);
-  });
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  maybeDrag = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, startTx: view.tx, startTy: view.ty };
+});
+
 
   frame.addEventListener('pointermove', (e) => {
+    if (Math.hypot(dx, dy) > DRAG_THRESHOLD){
+  dragging = true;
+  frame.setPointerCapture && frame.setPointerCapture(e.pointerId);
+}
     // handle pointer-based pinch (two pointers) separately below
     // handle potential drag
     if (maybeDrag && maybeDrag.pointerId === e.pointerId && !dragging){
