@@ -3,24 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>PolyWeave Mines — Tilings Engine</title>
+  <title>PolyWeave Mines</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body data-theme="dark-ocean">
   <div class="controls" role="region" aria-label="Game controls">
     <div class="control-group">
       <label for="msRows">Rows</label>
-      <input id="msRows" type="number" min="3" max="120" value="9" />
+      <input id="msRows" type="number" min="3" max="240" value="12" />
     </div>
 
     <div class="control-group">
       <label for="msCols">Cols</label>
-      <input id="msCols" type="number" min="3" max="120" value="9" />
+      <input id="msCols" type="number" min="3" max="240" value="16" />
     </div>
 
     <div class="control-group">
       <label for="msMines">Mines</label>
-      <input id="msMines" type="number" min="1" value="10" />
+      <input id="msMines" type="number" min="1" value="40" />
     </div>
 
     <div class="control-group">
@@ -47,16 +47,6 @@
       </select>
     </div>
 
-    <div class="control-group">
-      <label for="xGapValue">H gap</label>
-      <input id="xGapValue" class="value-input" type="text" inputmode="decimal" value="1.00" />
-    </div>
-
-    <div class="control-group">
-      <label for="yGapValue">V gap</label>
-      <input id="yGapValue" class="value-input" type="text" inputmode="decimal" value="1.00" />
-    </div>
-
     <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
       <div id="msStatus">Ready</div>
       <button id="newGame" class="ms-btn primary">New Game</button>
@@ -67,7 +57,7 @@
     <div class="minefield-window" id="minefieldWindow">
       <div class="minefield-shell">
         <div class="minefield-frame">
-          <div class="minefield-container" id="minefieldContainer" tabindex="0" aria-label="Minefield. Pinch or use trackpad/ctrl+wheel to zoom.">
+          <div class="minefield-container" id="minefieldContainer" tabindex="0" aria-label="Minefield. Drag to pan, pinch or ctrl+wheel to zoom.">
             <svg id="minefieldSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin meet"></svg>
           </div>
         </div>
