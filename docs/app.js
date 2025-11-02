@@ -186,6 +186,16 @@ function toggleFlag(grid, r, c){
 function checkWin(grid){
   return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed));
 }
+function countFlaggedNeighbors(grid, r, c){
+  const offsets = squareOffsets(r, c, currentAdjacency);
+  let count = 0;
+  for (const [dr,dc] of offsets){
+    const rr = r + dr, cc = c + dc;
+    if (!inBounds(grid.rows, grid.cols, rr, cc)) continue;
+    if (grid.cells[idx(grid.rows, grid.cols, rr, cc)].flagged) count++;
+  }
+  return count;
+}
 
 // handlers
 function attachHandlers(el, r, c){
