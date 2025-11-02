@@ -209,6 +209,31 @@ function attachHandlers(el, r, c){
     }
     renderBoard();
   });
+// chord click on revealed numbered cell
+if (!firstClick && cellObj.revealed && cellObj.count > 0){
+  const flaggedCount = countFlaggedNeighbors(gameGrid, r, c);
+  if (flaggedCount === cellObj.count){
+    const offsets = squareOffsets(r, c, currentAdjacency);
+    let exploded = false;
+    for (const [dr,dc] of offsets){
+      const rr = r + dr, cc = c + dc;
+      if (!inBounds(gameGrid.rows, gameGrid.cols, rr, cc)) continue;
+      const neighbor = gameGrid.cells[idx(gameGrid.rows, gameGrid.cols, rr, cc)];
+      if (!neighbor.flagged && !neighbor.revealed){
+        const res = revealCell(gameGrid, rr, cc);
+        if (res.exploded) exploded = true;
+      }
+    }
+    if (exploded){
+      running = false;
+      gameGrid.cells.forEach(cl => { if (cl.mine) cl.revealed = true; });
+      const ms = document.getElementById('msStatus'); if (ms) ms.textContent = 'BOOM - chord fail';
+    }
+    renderBoard();
+    return;
+  }
+  return; // clicked a number but flag count doesn't match
+}
 
   el.addEventListener('contextmenu', (e) => {
     e.preventDefault(); e.stopPropagation();
