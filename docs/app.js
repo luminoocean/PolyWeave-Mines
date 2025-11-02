@@ -218,21 +218,6 @@ function wireControls(){
   } else {
     deleteBtn.style.display = 'none';
   }
-  // ... rest of handler
-});
-
-document.getElementById('deleteAdj').addEventListener('click', ()=>{
-  if (confirm(`Delete "${currentAdjacency}"?`)) {
-    delete customAdj[currentAdjacency];
-    populateCustomAdjToDropdown();
-    document.getElementById('adjacencySelect').value = 'all8';
-    currentAdjacency = 'all8';
-    document.getElementById('deleteAdj').style.display = 'none';
-    saveAll();
-    renderBoard();
-  }
-});
-
   const newBtn = document.getElementById('newGame');
   if (newBtn){ newBtn.removeEventListener('click', startNewGame); newBtn.addEventListener('click', startNewGame); }
 
@@ -275,6 +260,20 @@ document.getElementById('deleteAdj').addEventListener('click', ()=>{
 
   const previewStart = document.getElementById('previewStart');
   if (previewStart) previewStart.addEventListener('click', ()=>{ startPreview(); });
+    });
+
+document.getElementById('deleteAdj').addEventListener('click', ()=>{
+  if (confirm(`Delete "${currentAdjacency}"?`)) {
+    delete customAdj[currentAdjacency];
+    populateCustomAdjToDropdown();
+    document.getElementById('adjacencySelect').value = 'all8';
+    currentAdjacency = 'all8';
+    document.getElementById('deleteAdj').style.display = 'none';
+    saveAll();
+    renderBoard();
+  }
+});
+
 }
 
 // autosave / persistence
