@@ -35,7 +35,7 @@
 
     <div class="control-group">
       <label for="themeSelect">Theme</label>
-      <select id="themeSelect">
+      <select id="themeSelect" aria-label="Theme">
         <option value="dark-ocean">Dark Ocean</option>
         <option value="solarized-dark">Solarized Dark</option>
         <option value="nord">Nord</option>
@@ -70,8 +70,12 @@
 
   <main id="appRoot" role="main" aria-live="polite">
     <div class="minefield-window">
-      <div class="minefield-container" id="minefieldContainer">
-        <svg id="minefieldSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="minefield-shell">
+        <div class="minefield-frame">
+          <div class="minefield-container" id="minefieldContainer">
+            <svg id="minefieldSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin meet"></svg>
+          </div>
+        </div>
       </div>
     </div>
   </main>
