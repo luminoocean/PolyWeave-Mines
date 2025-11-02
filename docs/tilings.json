@@ -1,42 +1,34 @@
 {
-  "meta": { "version": "1.1", "notes": "Adjacency metadata and simple render hints." },
+  "meta": { "version": "1.3" },
   "tilings": [
     {
       "id": "square",
       "name": "Square",
-      "coord": "grid-rc",
-      "params": { "unit": { "w": 1, "h": 1 } },
       "adjacencies": {
-        "edges4": { "label":"Von Neumann (4)","type":"offsets","offsets":[[-1,0],[1,0],[0,-1],[0,1]] },
-        "all8": { "label":"All 8","type":"offsets","offsets":[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] }
+        "edges4": { "label": "Edges", "type": "offsets", "offsets": [[-1,0],[1,0],[0,-1],[0,1]] },
+        "all8": { "label": "All 8", "type": "offsets", "offsets": [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] }
       }
     },
     {
       "id": "hex",
-      "name": "Hexagon (odd-q vertical)",
-      "coord": "hex-odd-q",
-      "params": { "side": 1 },
+      "name": "Hexagon",
       "adjacencies": {
-        "hex6": { "label":"6 neighbors","type":"function","fn":"hexOffsetsFor" }
+        "hex6": { "label": "Edges", "type": "function", "fn": "hexOffsetsFor" }
       }
     },
     {
       "id": "triangle_equi",
-      "name": "Equilateral Triangle (triangular lattice)",
-      "coord": "triangular-rc",
-      "params": { "side": 1 },
+      "name": "Equilateral Triangle",
       "adjacencies": {
-        "triE-edge": { "label":"3 edge-neighbors","type":"function","fn":"triangleEquiOffsets" },
-        "triE-edgev": { "label":"6 neighbors (edges+vertices)","type":"function","fn":"triangleEquiOffsets" }
+        "triE-edge": { "label": "Edges", "type": "function", "fn": "triangleEquiOffsets" },
+        "triE-edgev": { "label": "Edges+Vertices", "type": "function", "fn": "triangleEquiOffsets" }
       }
     },
     {
-      "id": "cairo",
-      "name": "Cairo pentagonal tiling (dual-mapped)",
-      "coord": "cairo-dual",
-      "params": {},
+      "id": "square_octagon",
+      "name": "Square & Octagon",
       "adjacencies": {
-        "cairo-edge": { "label":"edge adjacency","type":"function","fn":"cairoOffsets" }
+        "mixed-edge": { "label": "Edges", "type": "function", "fn": "squareOctagonOffsets" }
       }
     }
   ]
