@@ -1,8 +1,6 @@
 // app.js
-// Full game logic with autosave, custom adjacency editor, copy/paste import/export,
-// mobile flag-mode, pan/zoom, chording, and correct dropdown sync on load/import.
-
-// NOTE: This file is the updated complete app.js; drop it in place of the existing file.
+// Full updated file: autosave, custom adjacency editor, copy/paste import-export,
+// mobile flag-mode, pan/zoom, chording, and delete custom adjacency button next to dropdown.
 
 const NUMBER_COLORS = {1:'#3ec7ff',2:'#ff6b6b',3:'#ffd27a',4:'#a88cff',5:'#ff9fb3',6:'#7ce7ff',7:'#d3d3d3',8:'#b0c4de'};
 
@@ -209,15 +207,6 @@ function startNewGame(){
 }
 
 function wireControls(){
-  adj.addEventListener('change', (e)=>{ 
-  currentAdjacency = e.target.value;
-  // Show delete button only for custom adjacencies
-  const deleteBtn = document.getElementById('deleteAdj');
-  if (customAdj[currentAdjacency]) {
-    deleteBtn.style.display = 'block';
-  } else {
-    deleteBtn.style.display = 'none';
-  }
   const newBtn = document.getElementById('newGame');
   if (newBtn){ newBtn.removeEventListener('click', startNewGame); newBtn.addEventListener('click', startNewGame); }
 
@@ -226,12 +215,38 @@ function wireControls(){
   const msMines = document.getElementById('msMines');
   const adj = document.getElementById('adjacencySelect');
   const theme = document.getElementById('themeSelect');
+  const deleteAdjBtn = document.getElementById('deleteAdj');
 
   if (msRows) msRows.addEventListener('change', ()=>{ persistSettings(); startNewGame(); });
   if (msCols) msCols.addEventListener('change', ()=>{ persistSettings(); startNewGame(); });
   if (msMines) msMines.addEventListener('change', ()=>{ persistSettings(); startNewGame(); });
-  if (adj) adj.addEventListener('change', (e)=>{ currentAdjacency = e.target.value; if (gameGrid) computeCounts(gameGrid,currentAdjacency); persistSettings(); renderBoard(); saveAll(); });
+
+  if (adj) adj.addEventListener('change', (e)=>{
+    currentAdjacency = e.target.value;
+    // show/hide delete button
+    if (deleteAdjBtn) deleteAdjBtn.style.display = (customAdj && customAdj[currentAdjacency]) ? 'inline-block' : 'none';
+    if (gameGrid) computeCounts(gameGrid,currentAdjacency);
+    persistSettings(); renderBoard(); saveAll();
+  });
+
   if (theme) theme.addEventListener('change', (e)=>{ document.body.setAttribute('data-theme', e.target.value || 'dark-ocean'); persistSettings(); saveAll(); renderBoard(); });
+
+  // delete custom adjacency handler
+  if (deleteAdjBtn){
+    deleteAdjBtn.addEventListener('click', ()=>{
+      if (!currentAdjacency || !customAdj[currentAdjacency]) return;
+      if (!confirm(`Delete custom adjacency "${currentAdjacency}"? This cannot be undone.`)) return;
+      delete customAdj[currentAdjacency];
+      populateCustomAdjToDropdown();
+      // switch to default
+      const sel = document.getElementById('adjacencySelect');
+      if (sel){ sel.value = 'all8'; currentAdjacency = 'all8'; }
+      deleteAdjBtn.style.display = 'none';
+      saveAll(); renderBoard();
+    });
+    // initial visibility
+    if (deleteAdjBtn) deleteAdjBtn.style.display = 'none';
+  }
 
   // flag-mode button
   const flagBtn = document.getElementById('flagMode');
@@ -260,20 +275,6 @@ function wireControls(){
 
   const previewStart = document.getElementById('previewStart');
   if (previewStart) previewStart.addEventListener('click', ()=>{ startPreview(); });
-    });
-
-document.getElementById('deleteAdj').addEventListener('click', ()=>{
-  if (confirm(`Delete "${currentAdjacency}"?`)) {
-    delete customAdj[currentAdjacency];
-    populateCustomAdjToDropdown();
-    document.getElementById('adjacencySelect').value = 'all8';
-    currentAdjacency = 'all8';
-    document.getElementById('deleteAdj').style.display = 'none';
-    saveAll();
-    renderBoard();
-  }
-});
-
 }
 
 // autosave / persistence
@@ -335,8 +336,11 @@ function loadAll(){
 
     // After custom patterns are in the dropdown, decide adjacency to set (raw.settings > settingsRaw > default)
     const adjToSet = (raw && raw.settings && raw.settings.adjacency) || (settingsRaw && settingsRaw.adjacency) || 'all8';
-    document.getElementById('adjacencySelect').value = adjToSet;
-    currentAdjacency = adjToSet;
+    const sel = document.getElementById('adjacencySelect');
+    if (sel){ sel.value = adjToSet; currentAdjacency = adjToSet; }
+    // ensure delete button visibility matches
+    const deleteAdjBtn = document.getElementById('deleteAdj');
+    if (deleteAdjBtn) deleteAdjBtn.style.display = (customAdj && customAdj[currentAdjacency]) ? 'inline-block' : 'none';
 
     // Now apply any more detailed saved settings if present
     if (raw && raw.settings){
@@ -400,8 +404,10 @@ function importStateString(str){
   document.getElementById('msMines').value = json.s.mines;
 
   // set adjacency AFTER custom options exist and sync variable
-  document.getElementById('adjacencySelect').value = json.s.adjacency || 'all8';
-  currentAdjacency = json.s.adjacency || 'all8';
+  const sel = document.getElementById('adjacencySelect');
+  if (sel){ sel.value = json.s.adjacency || 'all8'; currentAdjacency = json.s.adjacency || 'all8'; }
+  const deleteAdjBtn = document.getElementById('deleteAdj');
+  if (deleteAdjBtn) deleteAdjBtn.style.display = (customAdj && customAdj[currentAdjacency]) ? 'inline-block' : 'none';
 
   document.getElementById('themeSelect').value = json.s.theme || 'dark-ocean';
   document.body.setAttribute('data-theme', json.s.theme || 'dark-ocean');
