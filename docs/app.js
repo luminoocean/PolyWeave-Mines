@@ -1,6 +1,8 @@
 // app.js
-// Updated: ensure custom adjacencies are populated before selecting them on import/load
-// and keep currentAdjacency in sync so chord (chording) behavior remains active.
+// Full game logic with autosave, custom adjacency editor, copy/paste import/export,
+// mobile flag-mode, pan/zoom, chording, and correct dropdown sync on load/import.
+
+// NOTE: This file is the updated complete app.js; drop it in place of the existing file.
 
 const NUMBER_COLORS = {1:'#3ec7ff',2:'#ff6b6b',3:'#ffd27a',4:'#a88cff',5:'#ff9fb3',6:'#7ce7ff',7:'#d3d3d3',8:'#b0c4de'};
 
@@ -14,26 +16,31 @@ const view = { scale: 0.6, tx: 0, ty: 0 };
 const STORAGE_KEY = 'polyweave_state_v1';
 const CUSTOM_KEY = 'polyweave_custom_adj_v1';
 
+// utils
 function idx(rows,cols,r,c){ return r*cols + c; }
 function inBounds(rows,cols,r,c){ return r>=0 && r<rows && c>=0 && c<cols; }
 function createGrid(rows,cols){ return { rows, cols, cells: Array(rows*cols).fill(0).map(()=>({ mine:false, revealed:false, flagged:false, count:0 })) }; }
 
+// adjacency registry (built-ins + custom)
 function squareOffsets(r,c,adj){
   if (adj === 'edges4') return [[-1,0],[1,0],[0,-1],[0,1]];
   if (adj === 'all8') return [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-  if (customAdj[adj]) return customAdj[adj];
+  if (customAdj && customAdj[adj]) return customAdj[adj];
   return [[-1,0],[1,0],[0,-1],[0,1]];
 }
 
+// geometry helpers
 function squareCenter(rows,cols,side){
   const PAD = 12; const centers=[];
   for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){ const x = PAD + c*side + side/2; const y = PAD + r*side + side/2; centers.push({r,c,x,y}); }
   return { centers, w: PAD*2 + cols*side, h: PAD*2 + rows*side };
 }
 
+// svg helpers
 function makeSvg(tag, attrs={}){ const el=document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) el.setAttribute(k, String(attrs[k])); return el; }
 function polyPoints(pts){ return pts.map(p=>`${p[0]},${p[1]}`).join(' '); }
 
+// render
 function renderBoard(){
   const svg = document.getElementById('minefieldSvg');
   const container = document.getElementById('minefieldContainer');
@@ -75,6 +82,7 @@ function renderBoard(){
   container.style.transformOrigin = 'center center';
 }
 
+// game logic
 function computeCounts(grid, adjacency){
   const { rows, cols, cells } = grid;
   for (let r=0;r<rows;r++){
@@ -112,6 +120,7 @@ function placeMines(grid, mineCount, safe){
   computeCounts(grid,currentAdjacency);
 }
 
+// reveal/flag/chord helpers
 function revealCell(grid,r,c){
   const { rows, cols, cells } = grid;
   if (!inBounds(rows,cols,r,c)) return { changed:[], exploded:false };
@@ -125,9 +134,7 @@ function revealCell(grid,r,c){
     if (!cl || cl.revealed || cl.flagged) continue;
     cl.revealed = true; changed.push([rr,cc]);
     if (cl.count === 0){
-      for (const [dr,dc] of squareOffsets(rr,cc,currentAdjacency)){
-        const nr = rr+dr, nc = cc+dc; if (!inBounds(rows,cols,nr,nc)) continue; const ni = idx(rows,cols,nr,nc); if (!cells[ni].revealed && !cells[ni].flagged) stack.push([nr,nc]);
-      }
+      for (const [dr,dc] of squareOffsets(rr,cc,currentAdjacency)){ const nr = rr+dr, nc = cc+dc; if (!inBounds(rows,cols,nr,nc)) continue; const ni = idx(rows,cols,nr,nc); if (!cells[ni].revealed && !cells[ni].flagged) stack.push([nr,nc]); }
     }
   }
   return { changed, exploded:false };
@@ -136,11 +143,13 @@ function toggleFlag(grid,r,c){ const {rows,cols,cells}=grid; if (!inBounds(rows,
 function checkWin(grid){ return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed)); }
 function countFlaggedNeighbors(grid,r,c){ let count=0; for (const [dr,dc] of squareOffsets(r,c,currentAdjacency)){ const rr=r+dr, cc=c+dc; if (!inBounds(grid.rows,grid.cols,rr,cc)) continue; if (grid.cells[idx(grid.rows,grid.cols,rr,cc)].flagged) count++; } return count; }
 
+// handlers
 function attachHandlers(el,r,c){
   el.addEventListener('click', (e)=>{
     e.stopPropagation();
     if (!running) return;
 
+    // mobile flag-mode check
     const flagModeActive = document.body.classList.contains('flag-mode');
     if (flagModeActive){
       toggleFlag(gameGrid,r,c);
@@ -148,6 +157,7 @@ function attachHandlers(el,r,c){
       saveAll(); renderBoard(); return;
     }
 
+    // chord behavior (reveal neighbors when flagged count equals number)
     const cellObjNow = gameGrid.cells[idx(gameGrid.rows,gameGrid.cols,r,c)];
     if (cellObjNow.revealed && cellObjNow.count > 0){
       const flagged = countFlaggedNeighbors(gameGrid,r,c);
@@ -165,16 +175,25 @@ function attachHandlers(el,r,c){
       return;
     }
 
-    if (firstClick){ const mines = Math.max(1, Number((document.getElementById('msMines')||{value:40}).value || 40)); placeMines(gameGrid, mines, [r,c]); firstClick = false; }
+    if (firstClick){
+      const mines = Math.max(1, Number((document.getElementById('msMines')||{value:40}).value || 40));
+      placeMines(gameGrid, mines, [r,c]);
+      firstClick = false;
+    }
     const res = revealCell(gameGrid,r,c);
-    if (res.exploded){ running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); document.getElementById('msStatus').textContent='BOOM'; }
-    else { if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; } else document.getElementById('msStatus').textContent='Playing...'; }
+    if (res.exploded){
+      running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); document.getElementById('msStatus').textContent='BOOM';
+    } else {
+      if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; }
+      else document.getElementById('msStatus').textContent='Playing...';
+    }
     saveAll(); renderBoard();
   });
 
   el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); e.stopPropagation(); if (!running) return; toggleFlag(gameGrid,r,c); if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; } saveAll(); renderBoard(); });
 }
 
+// controls & UI wiring
 function startNewGame(){
   const rows = Math.max(3, Number((document.getElementById('msRows')||{value:12}).value || 12));
   const cols = Math.max(3, Number((document.getElementById('msCols')||{value:16}).value || 16));
@@ -190,25 +209,51 @@ function startNewGame(){
 }
 
 function wireControls(){
-  document.getElementById('newGame').addEventListener('click', ()=>{ startNewGame(); });
-  document.getElementById('msRows').addEventListener('change', ()=>{ persistSettings(); startNewGame(); });
-  document.getElementById('msCols').addEventListener('change', ()=>{ persistSettings(); startNewGame(); });
-  document.getElementById('msMines').addEventListener('change', ()=>{ persistSettings(); startNewGame(); });
-  document.getElementById('adjacencySelect').addEventListener('change', (e)=>{ currentAdjacency = e.target.value; computeCounts(gameGrid,currentAdjacency); persistSettings(); renderBoard(); saveAll(); });
-  document.getElementById('themeSelect').addEventListener('change', (e)=>{ document.body.setAttribute('data-theme', e.target.value || 'dark-ocean'); persistSettings(); saveAll(); renderBoard(); });
+  const newBtn = document.getElementById('newGame');
+  if (newBtn){ newBtn.removeEventListener('click', startNewGame); newBtn.addEventListener('click', startNewGame); }
 
+  const msRows = document.getElementById('msRows');
+  const msCols = document.getElementById('msCols');
+  const msMines = document.getElementById('msMines');
+  const adj = document.getElementById('adjacencySelect');
+  const theme = document.getElementById('themeSelect');
+
+  if (msRows) msRows.addEventListener('change', ()=>{ persistSettings(); startNewGame(); });
+  if (msCols) msCols.addEventListener('change', ()=>{ persistSettings(); startNewGame(); });
+  if (msMines) msMines.addEventListener('change', ()=>{ persistSettings(); startNewGame(); });
+  if (adj) adj.addEventListener('change', (e)=>{ currentAdjacency = e.target.value; if (gameGrid) computeCounts(gameGrid,currentAdjacency); persistSettings(); renderBoard(); saveAll(); });
+  if (theme) theme.addEventListener('change', (e)=>{ document.body.setAttribute('data-theme', e.target.value || 'dark-ocean'); persistSettings(); saveAll(); renderBoard(); });
+
+  // flag-mode button
   const flagBtn = document.getElementById('flagMode');
-  if (flagBtn){ flagBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); const on = document.body.classList.toggle('flag-mode'); flagBtn.setAttribute('aria-pressed', on); }); }
+  if (flagBtn){
+    flagBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); const on = document.body.classList.toggle('flag-mode'); flagBtn.setAttribute('aria-pressed', on); });
+  }
 
-  document.getElementById('copyGame').addEventListener('click', ()=>{ const s = exportStateString(); navigator.clipboard.writeText(s).then(()=>{ flashStatus('Copied'); }).catch(()=>{ flashStatus('Copy failed'); }); });
-  document.getElementById('pasteGame').addEventListener('click', ()=>{ openPasteModal(); });
-  document.getElementById('openAdjEditor').addEventListener('click', ()=>{ openAdjModal(); });
-  document.getElementById('closeAdj').addEventListener('click', ()=>{ closeAdjModal(); });
-  document.getElementById('closePaste').addEventListener('click', ()=>{ closePasteModal(); });
-  document.getElementById('importBtn').addEventListener('click', ()=>{ const v = document.getElementById('pasteInput').value.trim(); try{ importStateString(v); closePasteModal(); flashStatus('Imported'); } catch(e){ flashStatus('Invalid code'); } });
-  document.getElementById('previewStart').addEventListener('click', ()=>{ startPreview(); });
+  // copy / paste
+  const copyBtn = document.getElementById('copyGame');
+  if (copyBtn) copyBtn.addEventListener('click', ()=>{ const s = exportStateString(); navigator.clipboard.writeText(s).then(()=>{ flashStatus('Copied'); }).catch(()=>{ flashStatus('Copy failed'); }); });
+  const pasteBtn = document.getElementById('pasteGame');
+  if (pasteBtn) pasteBtn.addEventListener('click', ()=>{ openPasteModal(); });
+
+  // adjacency editor open
+  const openAdj = document.getElementById('openAdjEditor');
+  if (openAdj) openAdj.addEventListener('click', ()=>{ openAdjModal(); });
+
+  // modal close handlers
+  const closeAdjBtn = document.getElementById('closeAdj');
+  if (closeAdjBtn) closeAdjBtn.addEventListener('click', ()=>{ closeAdjModal(); });
+  const closePasteBtn = document.getElementById('closePaste');
+  if (closePasteBtn) closePasteBtn.addEventListener('click', ()=>{ closePasteModal(); });
+
+  const importBtn = document.getElementById('importBtn');
+  if (importBtn) importBtn.addEventListener('click', ()=>{ const v = document.getElementById('pasteInput').value.trim(); try{ importStateString(v); closePasteModal(); flashStatus('Imported'); } catch(e){ flashStatus('Invalid code'); } });
+
+  const previewStart = document.getElementById('previewStart');
+  if (previewStart) previewStart.addEventListener('click', ()=>{ startPreview(); });
 }
 
+// autosave / persistence
 function persistSettings(){
   const settings = {
     rows: Number((document.getElementById('msRows')||{value:12}).value),
@@ -247,41 +292,43 @@ function saveAll(){
 
 function loadAll(){
   try{
-    // load custom patterns first so dropdown can be built before selecting adjacency
+    // Load custom patterns first so dropdown can include them before we set adjacency
     const savedCustom = JSON.parse(localStorage.getItem(CUSTOM_KEY) || '{}');
     if (savedCustom && typeof savedCustom === 'object'){ customAdj = savedCustom; populateCustomAdjToDropdown(); }
 
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    // Load lightweight settings (keep adjacency set for later)
     const settingsRaw = JSON.parse(localStorage.getItem(STORAGE_KEY + '_settings') || 'null');
-
     if (settingsRaw){
       document.getElementById('msRows').value = settingsRaw.rows;
       document.getElementById('msCols').value = settingsRaw.cols;
       document.getElementById('msMines').value = settingsRaw.mines;
-      document.getElementById('adjacencySelect').value = settingsRaw.adjacency || 'all8';
-      currentAdjacency = settingsRaw.adjacency || 'all8';
       document.getElementById('themeSelect').value = settingsRaw.theme || 'dark-ocean';
       document.body.setAttribute('data-theme', settingsRaw.theme || 'dark-ocean');
     }
 
-    if (!raw) return;
+    // Load the full saved state
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    if (raw && raw.customAdj){ customAdj = raw.customAdj; populateCustomAdjToDropdown(); }
 
-    if (raw.customAdj){ customAdj = raw.customAdj; populateCustomAdjToDropdown(); }
+    // After custom patterns are in the dropdown, decide adjacency to set (raw.settings > settingsRaw > default)
+    const adjToSet = (raw && raw.settings && raw.settings.adjacency) || (settingsRaw && settingsRaw.adjacency) || 'all8';
+    document.getElementById('adjacencySelect').value = adjToSet;
+    currentAdjacency = adjToSet;
 
-    if (raw.settings){
+    // Now apply any more detailed saved settings if present
+    if (raw && raw.settings){
       document.getElementById('msRows').value = raw.settings.rows;
       document.getElementById('msCols').value = raw.settings.cols;
       document.getElementById('msMines').value = raw.settings.mines;
-      document.getElementById('adjacencySelect').value = raw.settings.adjacency || 'all8';
-      currentAdjacency = raw.settings.adjacency || 'all8';
       document.getElementById('themeSelect').value = raw.settings.theme || 'dark-ocean';
       document.body.setAttribute('data-theme', raw.settings.theme || 'dark-ocean');
     }
 
-    if (raw.game){
+    // restore game if present
+    if (raw && raw.game){
       const s = raw.game;
-      const r = raw.settings ? raw.settings.rows : Number(document.getElementById('msRows').value);
-      const c = raw.settings ? raw.settings.cols : Number(document.getElementById('msCols').value);
+      const r = (raw.settings && raw.settings.rows) || Number(document.getElementById('msRows').value);
+      const c = (raw.settings && raw.settings.cols) || Number(document.getElementById('msCols').value);
       gameGrid = createGrid(r,c);
       (s.mines||[]).forEach(i => { if (i >=0 && i < gameGrid.cells.length) gameGrid.cells[i].mine = true; });
       (s.revealed||[]).forEach(i => { if (i >=0 && i < gameGrid.cells.length) gameGrid.cells[i].revealed = true; });
@@ -290,10 +337,12 @@ function loadAll(){
       running = !!s.running;
       computeCounts(gameGrid, document.getElementById('adjacencySelect').value);
     }
-    if (raw.view) { Object.assign(view, raw.view); }
+
+    if (raw && raw.view){ Object.assign(view, raw.view); }
   }catch(e){ console.warn('load failed', e); }
 }
 
+// copy / paste compact encoding
 function exportStateString(){
   const settings = {
     rows: Number(document.getElementById('msRows').value),
@@ -316,21 +365,25 @@ function importStateString(str){
   const json = JSON.parse(decodeURIComponent(escape(atob(str))));
   if (!json || !json.s) throw new Error('invalid');
 
-  // populate custom patterns first so dropdown can select them
+  // Populate custom patterns first so dropdown selection will succeed
   if (json.custom){
     customAdj = json.custom;
     populateCustomAdjToDropdown();
   }
 
-  // apply settings and sync currentAdjacency (important for chording)
+  // Apply settings and ensure currentAdjacency is updated (important for chording)
   document.getElementById('msRows').value = json.s.rows;
   document.getElementById('msCols').value = json.s.cols;
   document.getElementById('msMines').value = json.s.mines;
+
+  // set adjacency AFTER custom options exist and sync variable
   document.getElementById('adjacencySelect').value = json.s.adjacency || 'all8';
   currentAdjacency = json.s.adjacency || 'all8';
+
   document.getElementById('themeSelect').value = json.s.theme || 'dark-ocean';
   document.body.setAttribute('data-theme', json.s.theme || 'dark-ocean');
 
+  // Rebuild game if present
   if (json.g){
     const r = json.s.rows, c = json.s.cols;
     gameGrid = createGrid(r,c);
@@ -341,9 +394,11 @@ function importStateString(str){
     running = !!json.g.running;
     computeCounts(gameGrid, document.getElementById('adjacencySelect').value);
   }
+
   saveAll(); renderBoard();
 }
 
+// small status flash
 function flashStatus(txt){
   const el = document.getElementById('msStatus');
   if (!el) return;
@@ -352,13 +407,22 @@ function flashStatus(txt){
   setTimeout(()=> el.textContent = prev, 1200);
 }
 
-function openAdjModal(){ document.getElementById('adjModal').setAttribute('aria-hidden','false'); document.querySelectorAll('#adjModal .tab').forEach(t=> t.classList.remove('active')); document.querySelector('#adjModal .tab[data-tab="editor"]').classList.add('active'); document.querySelectorAll('#adjModal .tabpane').forEach(p=> p.classList.remove('active')); document.getElementById('editorTab').classList.add('active'); initEditorGrid(); }
+/* --- adjacency editor modal --- */
+function openAdjModal(){
+  document.getElementById('adjModal').setAttribute('aria-hidden','false');
+  document.querySelectorAll('#adjModal .tab').forEach(t=> t.classList.remove('active'));
+  document.querySelector('#adjModal .tab[data-tab="editor"]').classList.add('active');
+  document.querySelectorAll('#adjModal .tabpane').forEach(p=> p.classList.remove('active'));
+  document.getElementById('editorTab').classList.add('active');
+  initEditorGrid();
+}
 function closeAdjModal(){ document.getElementById('adjModal').setAttribute('aria-hidden','true'); }
 function openPasteModal(){ document.getElementById('pasteModal').setAttribute('aria-hidden','false'); }
 function closePasteModal(){ document.getElementById('pasteModal').setAttribute('aria-hidden','true'); }
 
 function initEditorGrid(){
   const gridEl = document.getElementById('editorGrid');
+  if (!gridEl) return;
   gridEl.innerHTML = '';
   const size = 15;
   for (let r=0;r<size;r++){
@@ -366,13 +430,18 @@ function initEditorGrid(){
       const cell = document.createElement('div');
       cell.className = 'editor-cell';
       cell.dataset.r = r; cell.dataset.c = c;
-      if (r === Math.floor(size/2) && c === Math.floor(size/2)){ cell.classList.add('editor-centre'); cell.innerHTML = '💣'; cell.style.cursor='default'; cell.dataset.center = '1'; }
-      else cell.addEventListener('click', editorToggleCell);
+      if (r === Math.floor(size/2) && c === Math.floor(size/2)){
+        cell.classList.add('editor-centre'); cell.innerHTML = '💣'; cell.style.cursor='default'; cell.dataset.center = '1';
+      } else {
+        cell.addEventListener('click', editorToggleCell);
+      }
       gridEl.appendChild(cell);
     }
   }
-  document.getElementById('clearAdj').onclick = clearEditor;
-  document.getElementById('saveAdj').onclick = saveEditorPattern;
+  const clearBtn = document.getElementById('clearAdj');
+  const saveBtn = document.getElementById('saveAdj');
+  if (clearBtn) clearBtn.onclick = clearEditor;
+  if (saveBtn) saveBtn.onclick = saveEditorPattern;
 }
 
 function editorToggleCell(e){ const el = e.currentTarget; if (el.dataset.center) return; el.classList.toggle('on'); }
@@ -391,11 +460,12 @@ function saveEditorPattern(){
   populateCustomAdjToDropdown();
   saveAll();
   flashStatus('Saved');
-  nameInput.value = '';
+  if (nameInput) nameInput.value = '';
 }
 
 function populateCustomAdjToDropdown(){
   const sel = document.getElementById('adjacencySelect');
+  if (!sel) return;
   Array.from(sel.querySelectorAll('option[data-custom="1"]')).forEach(o=> o.remove());
   for (const key of Object.keys(customAdj || {})){
     const opt = document.createElement('option');
@@ -405,6 +475,7 @@ function populateCustomAdjToDropdown(){
   }
 }
 
+/* --- preview (small game inside modal) --- */
 let previewGame = null;
 function startPreview(){
   const pr = Number(document.getElementById('previewRows').value || 9);
@@ -420,23 +491,23 @@ function renderPreview(grid, hostId){
   if (!host) return;
   host.innerHTML = '';
   const rows = grid.rows, cols = grid.cols;
-  const tbl = document.createElement('div');
-  tbl.style.display='grid';
-  tbl.style.gridTemplateColumns = `repeat(${cols},22px)`;
-  tbl.style.gap='4px';
+  const area = document.createElement('div');
+  area.style.display='grid';
+  area.style.gridTemplateColumns = `repeat(${cols},22px)`;
+  area.style.gap='4px';
   for (let r=0;r<rows;r++){
     for (let c=0;c<cols;c++){
       const i = idx(rows,cols,r,c);
       const el = document.createElement('div');
       el.style.width='22px'; el.style.height='22px'; el.style.background='rgba(255,255,255,0.02)'; el.style.display='flex'; el.style.alignItems='center'; el.style.justifyContent='center';
       if (r === Math.floor(rows/2) && c === Math.floor(cols/2) && grid.cells[i].mine) el.textContent='💣';
-      host.appendChild(el);
+      area.appendChild(el);
     }
   }
+  host.appendChild(area);
 }
 
-function openPasteModalWithText(text){ document.getElementById('pasteInput').value = text || ''; openPasteModal(); }
-
+/* --- setup zoom/pan (frame-level) --- */
 function setupZoomPan(){
   const frame = document.getElementById('minefieldFrame');
   const container = document.getElementById('minefieldContainer');
@@ -444,6 +515,7 @@ function setupZoomPan(){
   view.scale = 0.6; view.tx = 0; view.ty = 0;
   renderBoard();
 
+  // pan with delayed capture so clicks still register
   let dragging=false, maybeDrag=null; const DRAG_THRESHOLD=6;
   frame.addEventListener('pointerdown', (e)=>{ if (e.pointerType==='mouse' && e.button !== 0) return; maybeDrag = {pointerId:e.pointerId, startX:e.clientX, startY:e.clientY, startTx:view.tx, startTy:view.ty}; });
   frame.addEventListener('pointermove', (e)=>{
@@ -452,11 +524,15 @@ function setupZoomPan(){
       if (Math.hypot(dx,dy) > DRAG_THRESHOLD){ dragging=true; frame.setPointerCapture && frame.setPointerCapture(e.pointerId); }
       else return;
     }
-    if (dragging && maybeDrag && maybeDrag.pointerId === e.pointerId){ const dx = e.clientX - maybeDrag.startX, dy = e.clientY - maybeDrag.startY; view.tx = maybeDrag.startTx + dx; view.ty = maybeDrag.startTy + dy; renderBoard(); }
+    if (dragging && maybeDrag && maybeDrag.pointerId === e.pointerId){
+      const dx = e.clientX - maybeDrag.startX, dy = e.clientY - maybeDrag.startY;
+      view.tx = maybeDrag.startTx + dx; view.ty = maybeDrag.startTy + dy; renderBoard();
+    }
   });
   function endPointer(e){ if (maybeDrag && maybeDrag.pointerId === e.pointerId){ dragging=false; maybeDrag=null; frame.releasePointerCapture && frame.releasePointerCapture(e.pointerId); } }
   frame.addEventListener('pointerup', endPointer); frame.addEventListener('pointercancel', endPointer); frame.addEventListener('pointerleave', endPointer);
 
+  // two-pointer pinch/trackpad gesture
   const pointers = new Map();
   function dist(a,b){ const dx=b.clientX - a.clientX, dy = b.clientY - a.clientY; return Math.hypot(dx,dy); }
   frame.addEventListener('pointerdown', e=> pointers.set(e.pointerId,e));
@@ -464,11 +540,14 @@ function setupZoomPan(){
   function clearPointer(e){ pointers.delete(e.pointerId); frame._lastD = null; }
   frame.addEventListener('pointerup', clearPointer); frame.addEventListener('pointercancel', clearPointer); frame.addEventListener('pointerout', clearPointer); frame.addEventListener('pointerleave', clearPointer);
 
+  // wheel zoom anywhere in frame (vertical scroll -> zoom)
   frame.addEventListener('wheel', (e)=>{ if (Math.abs(e.deltaY) > Math.abs(e.deltaX)){ const delta = -e.deltaY; const factor = 1 + Math.sign(delta) * Math.min(0.14, Math.abs(delta)/600); view.scale = Math.max(0.1, Math.min(6, view.scale * factor)); e.preventDefault(); renderBoard(); return; } }, { passive:false });
 
+  // keyboard shortcuts
   frame.addEventListener('keydown', (e)=>{ if (e.key === '+' || e.key === '='){ view.scale = Math.min(6, view.scale * 1.12); renderBoard(); } if (e.key === '-' || e.key === '_'){ view.scale = Math.max(0.1, view.scale / 1.12); renderBoard(); } if (e.key === '0'){ view.scale = 1; view.tx=0; view.ty=0; renderBoard(); } });
 }
 
+/* --- init --- */
 function init(){
   loadAll();
   wireControls();
@@ -477,12 +556,16 @@ function init(){
   if (!gameGrid) startNewGame();
   renderBoard();
 
+  // modal tab switching
   document.querySelectorAll('#adjModal .tab').forEach(btn=>{
     btn.addEventListener('click', ()=>{ document.querySelectorAll('#adjModal .tab').forEach(t=>t.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('#adjModal .tabpane').forEach(p=>p.classList.remove('active')); document.getElementById(btn.dataset.tab + 'Tab').classList.add('active'); });
   });
 
-  document.getElementById('pasteModal').addEventListener('click', (e)=>{ if (e.target === e.currentTarget) closePasteModal(); });
-  document.getElementById('adjModal').addEventListener('click', (e)=>{ if (e.target === e.currentTarget) closeAdjModal(); });
+  // close modals when clicking backdrop
+  const pasteModal = document.getElementById('pasteModal');
+  if (pasteModal) pasteModal.addEventListener('click', (e)=>{ if (e.target === e.currentTarget) closePasteModal(); });
+  const adjModal = document.getElementById('adjModal');
+  if (adjModal) adjModal.addEventListener('click', (e)=>{ if (e.target === e.currentTarget) closeAdjModal(); });
 }
 
 document.addEventListener('DOMContentLoaded', init);
