@@ -1,1 +1,66 @@
+{
+  "meta": {
+    "version": "1.0",
+    "notes": "Compact set of tilings with adjacency rules and coordinate metadata for Minesweeper engine."
+  },
+  "tilings": [
+    {
+      "id": "square",
+      "name": "Square",
+      "type": "regular",
+      "params": { "unit": { "w": 1, "h": 1 } },
+      "coord": "grid-rc",
+      "facesPerCell": 1,
+      "adjacencies": {
+        "edges4": { "label": "Von Neumann (4)", "type": "offsets", "offsets": [[-1,0],[1,0],[0,-1],[0,1]] },
+        "all8": { "label": "All 8 neighbors", "type": "offsets", "offsets": [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]] }
+      }
+    },
+    {
+      "id": "hex",
+      "name": "Hexagon (odd-q vertical layout)",
+      "type": "regular",
+      "params": { "side": 1 },
+      "coord": "hex-odd-q",
+      "facesPerCell": 1,
+      "adjacencies": {
+        "hex-6": { "label": "6 edge-neighbors", "type": "function", "fn": "hexOffsetsFor" }
+      }
+    },
+    {
+      "id": "triangle_equi",
+      "name": "Equilateral Triangle (triangular lattice)",
+      "type": "regular",
+      "params": { "side": 1 },
+      "coord": "triangular-rc", 
+      "facesPerCell": 1,
+      "adjacencies": {
+        "triE-edge": { "label": "3 edge-neighbors", "type": "function", "fn": "triangleEquiOffsets" },
+        "triE-edgev": { "label": "6 neighbors (edges+vertices)", "type": "function", "fn": "triangleEquiOffsets" }
+      }
+    },
+    {
+      "id": "cairo",
+      "name": "Cairo pentagonal tiling (mapped to dual square coordinate)",
+      "type": "semi-regular",
+      "params": {},
+      "coord": "cairo-dual",
+      "facesPerCell": 1,
+      "adjacencies": {
+        "cairo-edge": { "label": "edge adjacency", "type": "function", "fn": "cairoOffsets" }
+      }
+    },
+    {
+      "id": "3.12.12",
+      "name": "Archimedean 3.12.12",
+      "type": "archimedean",
+      "params": {},
+      "coord": "mixed",
+      "facesPerCell": 1,
+      "adjacencies": {
+        "mixed-edge": { "label": "mixed edges", "type": "function", "fn": "archimedeanOffsets" }
+      }
+    }
+  ]
+}
 
