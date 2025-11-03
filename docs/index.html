@@ -29,7 +29,7 @@
         <option value="all8" selected>All (8)</option>
         <option value="edges4">Edges (4)</option>
       </select>
-      <button id="deleteAdj" class="ms-btn" style="display:none">×</button>
+      <button id="deleteAdj" class="ms-btn" style="display:none; margin-left:8px;">×</button>
     </div>
 
     <div class="control-group">
@@ -63,7 +63,7 @@
   <main id="appRoot" role="main" aria-live="polite">
     <div class="minefield-window" id="minefieldWindow">
       <div class="minefield-shell" id="minefieldShell">
-        <div class="minefield-frame" id="minefieldFrame">
+        <div class="minefield-frame" id="minefieldFrame" tabindex="0">
           <div class="minefield-container" id="minefieldContainer" tabindex="0" aria-label="Minefield. Drag frame to pan, pinch/trackpad/ctrl+wheel or wheel to zoom.">
             <svg id="minefieldSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin meet"></svg>
           </div>
@@ -124,13 +124,18 @@
       </div>
     </div>
   </div>
-<div id="winOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:300; display:flex; align-items:center; justify-content:center;">
-  <div style="background:var(--panel); padding:40px; border-radius:12px; text-align:center;">
-    <h2 style="color:var(--accent); margin:0 0 10px;">🎉 You Win! 🎉</h2>
-    <div id="winTime" style="color:var(--sub); margin-bottom:20px;"></div>
-    <button onclick="document.getElementById('winOverlay').style.display='none'" class="ms-btn primary">Close</button>
+
+  <!-- Win overlay -->
+  <div id="winOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:300; display:flex; align-items:center; justify-content:center;">
+    <div style="background:var(--panel); padding:36px; border-radius:12px; text-align:center; min-width:280px;">
+      <h2 style="color:var(--accent); margin:0 0 8px;">🎉 You Win! 🎉</h2>
+      <div id="winTime" style="color:var(--sub); margin-bottom:14px;"></div>
+      <div style="display:flex; gap:8px; justify-content:center;">
+        <button id="winClose" class="ms-btn primary">Close</button>
+        <button id="winNew" class="ms-btn">New Game</button>
+      </div>
+    </div>
   </div>
-</div>
 
   <script src="app.js"></script>
 </body>
