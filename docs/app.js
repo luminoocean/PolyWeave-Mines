@@ -1,11 +1,7 @@
 // app.js
-// Full updated app.js with:
-// - autosave (settings + game + custom adjacencies + view)
-// - custom adjacency editor + delete button
-// - copy/paste import-export
-// - timer
-// - win overlay + clearer victory UX
-// - mobile flag-mode, pan/zoom, chording
+// Updated: avoid showing win overlay on load; if a saved game is already won, show status without overlay.
+// Full file with autosave, custom adjacency editor, copy/paste import-export,
+// timer, win overlay UX, mobile flag-mode, pan/zoom, chording, and delete custom adjacency.
 
 const NUMBER_COLORS = {1:'#3ec7ff',2:'#ff6b6b',3:'#ffd27a',4:'#a88cff',5:'#ff9fb3',6:'#7ce7ff',7:'#d3d3d3',8:'#b0c4de'};
 
@@ -291,6 +287,7 @@ function wireControls(){
       if (!confirm(`Delete custom adjacency "${currentAdjacency}"? This cannot be undone.`)) return;
       delete customAdj[currentAdjacency];
       populateCustomAdjToDropdown();
+      // switch to default
       const sel = document.getElementById('adjacencySelect');
       if (sel){ sel.value = 'all8'; currentAdjacency = 'all8'; }
       deleteAdjBtn.style.display = 'none';
@@ -422,6 +419,22 @@ function loadAll(){
       firstClick = !!s.firstClick;
       running = !!s.running;
       computeCounts(gameGrid, document.getElementById('adjacencySelect').value);
+
+      // Prevent auto-showing the win overlay on load.
+      // If the saved game was already won, show status without the overlay.
+      if (checkWin(gameGrid)){
+        // If the saved state has running=true, keep playing (rare), otherwise set status text but do NOT call onWin().
+        if (running){
+          // saved as running but already in winning state; stop timer and show overlay as an active win
+          // (this is an unusual case; we treat it as an actual win)
+          onWin();
+        } else {
+          // saved as not running -> completed before; set status but keep overlay hidden
+          document.getElementById('msStatus').textContent = 'You win!';
+          // ensure overlay hidden
+          const overlay = document.getElementById('winOverlay'); if (overlay) overlay.style.display = 'none';
+        }
+      }
     }
 
     if (raw && raw.view){ Object.assign(view, raw.view); }
