@@ -426,16 +426,17 @@ function loadAll(){
 
       // Prevent auto-showing the win overlay on load.
       // If the saved game was already won, show status without the overlay.
-      if (checkWin(gameGrid)){
-        if (running){
-          // saved as running but already in winning state; treat as win (rare)
-          onWin();
-        } else {
-          // completed before; set status text but KEEP overlay hidden
-          document.getElementById('msStatus').textContent = 'You win!';
-          const overlay = document.getElementById('winOverlay'); if (overlay) overlay.style.display = 'none';
-        }
-      }
+     if (checkWin(gameGrid)){
+  if (running){
+    // saved as running but already in winning state; treat as win (rare)
+    onWin();
+  } else {
+    // completed before; set status text but KEEP overlay hidden
+    document.getElementById('msStatus').textContent = 'You win!';
+    const overlay = document.getElementById('winOverlay'); if (overlay) overlay.style.display = 'none';
+  }
+}
+
     }
 
     if (raw && raw.view){ Object.assign(view, raw.view); }
