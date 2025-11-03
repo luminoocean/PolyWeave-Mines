@@ -232,6 +232,7 @@ document.getElementById('winOverlay').style.display = 'flex';
 
 // controls & UI wiring
 function startNewGame(){
+  resetTimer();
   const rows = Math.max(3, Number((document.getElementById('msRows')||{value:12}).value || 12));
   const cols = Math.max(3, Number((document.getElementById('msCols')||{value:16}).value || 16));
   let mines = Math.max(1, Number((document.getElementById('msMines')||{value:40}).value || 40));
