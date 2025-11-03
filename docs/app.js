@@ -1,7 +1,8 @@
 // app.js
-// Upgraded with smooth reveal animations, cascade ripple, flag animation, win wave.
-// Keeps prior features: autosave, custom adjacency editor, copy/paste import-export,
-// timer, win overlay, mobile flag-mode, pan/zoom, chording, delete custom adjacency.
+// Cleaned up animations and theme handling.
+// Fixes: toned-down flag animation, inputs respect theme tokens,
+// removed strokes between revealed tiles, proper number placement,
+// ensure themeSelect triggers immediate theme change.
 
 const NUMBER_COLORS = {1:'#3ec7ff',2:'#ff6b6b',3:'#ffd27a',4:'#a88cff',5:'#ff9fb3',6:'#7ce7ff',7:'#d3d3d3',8:'#b0c4de'};
 
@@ -42,7 +43,7 @@ function squareCenter(rows,cols,side){
 function makeSvg(tag, attrs={}){ const el=document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) el.setAttribute(k, String(attrs[k])); return el; }
 function polyPoints(pts){ return pts.map(p=>`${p[0]},${p[1]}`).join(' '); }
 
-// render + animation helpers
+// render
 function renderBoard(){
   const svg = document.getElementById('minefieldSvg');
   const container = document.getElementById('minefieldContainer');
@@ -61,23 +62,30 @@ function renderBoard(){
     const r=cell.r, c=cell.c, cx=cell.x, cy=cell.y;
     const s = side/2;
     const pts = [[cx-s,cy-s],[cx+s,cy-s],[cx+s,cy+s],[cx-s,cy+s]];
-    const poly = makeSvg('polygon',{ points: polyPoints(pts), stroke:'var(--accent)', 'stroke-width':1.25, fill:'rgba(2,10,20,0.9)', style:'cursor:pointer' });
+    const poly = makeSvg('polygon',{ points: polyPoints(pts) });
     const cellObj = gameGrid.cells[idx(rows,cols,r,c)];
     const fontSize = Math.max(11, Math.floor(side * 0.45));
-    const label = makeSvg('text',{ x:cx, y:cy + Math.floor(fontSize*0.35), 'text-anchor':'middle', 'font-size': fontSize, style:'pointer-events:none; user-select:none' });
+    const label = makeSvg('text',{ x:cx, y:cy + Math.floor(fontSize*0.35), 'text-anchor':'middle', 'font-size': fontSize });
 
-    // set base classes
+    // state classes and content
     if (cellObj.revealed){
       poly.classList.add('revealed');
-      if (cellObj.mine){ label.textContent='💣'; label.setAttribute('fill','#fff'); }
-      else if (cellObj.count>0){ label.textContent=String(cellObj.count); label.setAttribute('fill', NUMBER_COLORS[cellObj.count]||'#9be7ff'); label.classList.add('pop'); }
+      if (cellObj.mine){
+        label.textContent = '💣';
+        label.setAttribute('fill','#fff');
+      } else if (cellObj.count > 0){
+        label.textContent = String(cellObj.count);
+        label.setAttribute('fill', NUMBER_COLORS[cellObj.count] || '#9be7ff');
+        label.classList.add('pop');
+      }
     } else {
-      // if not revealed but flagged
+      // hidden tile
+      poly.classList.remove('revealed');
       if (cellObj.flagged){
         label.textContent = '🚩';
         label.setAttribute('fill','#ffb86b');
-        poly.classList.add('flagging');
         label.classList.add('flagging');
+        poly.classList.add('flagging');
       }
     }
 
@@ -90,7 +98,7 @@ function renderBoard(){
   container.style.transformOrigin = 'center center';
 }
 
-// counts, mines, placement (unchanged logic)
+// game logic unchanged
 function computeCounts(grid, adjacency){
   const { rows, cols, cells } = grid;
   for (let r=0;r<rows;r++){
@@ -128,7 +136,7 @@ function placeMines(grid, mineCount, safe){
   computeCounts(grid,currentAdjacency);
 }
 
-// reveal + cascade with animation scheduling
+// reveal with ripple scheduling
 function revealCell(grid,r,c){
   const { rows, cols, cells } = grid;
   if (!inBounds(rows,cols,r,c)) return { changed:[], exploded:false };
@@ -147,8 +155,6 @@ function revealCell(grid,r,c){
       }
     }
   }
-
-  // schedule visual cascade ripple from original click - caller will call scheduleRevealAnimation()
   return { changed, exploded:false };
 }
 
@@ -156,49 +162,46 @@ function toggleFlag(grid,r,c){ const {rows,cols,cells}=grid; if (!inBounds(rows,
 function checkWin(grid){ return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed)); }
 function countFlaggedNeighbors(grid,r,c){ let count=0; for (const [dr,dc] of squareOffsets(r,c,currentAdjacency)){ const rr=r+dr, cc=c+dc; if (!inBounds(grid.rows,grid.cols,rr,cc)) continue; if (grid.cells[idx(grid.rows,grid.cols,rr,cc)].flagged) count++; } return count; }
 
-// Timer functions
+// Timer
 function startTimer(){ if (timerInterval) return; startTime = Date.now() - (elapsedSeconds * 1000); timerInterval = setInterval(updateTimer, 100); }
 function stopTimer(){ if (timerInterval){ clearInterval(timerInterval); timerInterval = null; } }
 function resetTimer(){ stopTimer(); elapsedSeconds = 0; const el = document.getElementById('msTimer'); if (el) el.textContent = '0:00'; }
 function updateTimer(){ if (!startTime) return; const elapsed = Math.floor((Date.now() - startTime) / 1000); elapsedSeconds = elapsed; const mins = Math.floor(elapsed / 60); const secs = elapsed % 60; const el = document.getElementById('msTimer'); if (el) el.textContent = `${mins}:${secs.toString().padStart(2,'0')}`; }
 
-// Visual animation scheduling helpers
-// scheduleRevealAnimation(originR, originC, changedCells) - adds 'revealing' class with stagger, then flips to 'revealed'
+// animation helpers (deliberately simple and robust)
 function scheduleRevealAnimation(originR, originC, changedCells){
   const svg = document.getElementById('minefieldSvg');
-  if (!svg) return;
-  // compute distance-based delay
-  const distances = changedCells.map(([r,c]) => ({ r, c, d: Math.hypot(r - originR, c - originC) }));
-  const maxD = Math.max(...distances.map(x=>x.d), 1);
-  distances.forEach((it)=>{
-    const polyIndex = findPolygonIndexForCell(it.r, it.c);
-    if (polyIndex == null) return;
-    const poly = svg.children[polyIndex * 2]; // polygons and texts alternate; polygon is even index
-    const txt = svg.children[polyIndex * 2 + 1];
-    const normalized = it.d / maxD;
-    const delay = Math.round(180 + normalized * 260); // ms
-    poly.classList.add('revealing');
-    // staggered apply
+  if (!svg || !changedCells || changedCells.length===0) return;
+  // compute max distance
+  const ds = changedCells.map(([r,c]) => Math.hypot(r - originR, c - originC));
+  const maxD = Math.max(...ds, 1);
+  changedCells.forEach(([r,c], i) => {
+    const linear = idx(gameGrid.rows, gameGrid.cols, r, c);
+    const poly = svg.children[linear*2];
+    const txt = svg.children[linear*2 + 1];
+    if (!poly) return;
+    const d = Math.hypot(r - originR, c - originC);
+    const delay = Math.round((d / maxD) * 260);
+    // ensure class states match actual revealed state after delay
+    poly.classList.remove('revealing');
     setTimeout(()=>{
-      poly.classList.remove('revealing');
+      // poly should already be marked revealed by game state; we only ensure visual class exists
       poly.classList.add('revealed');
-      if (txt){ txt.classList.add('pop'); setTimeout(()=> txt.classList.remove('pop'), 900); }
-    }, delay);
+      if (txt && txt.textContent) {
+        txt.classList.add('pop');
+        setTimeout(()=> txt.classList.remove('pop'), 700);
+      }
+    }, 140 + delay);
   });
 }
 
-// helper to map r,c to the polygon/text child index in svg
-function findPolygonIndexForCell(r,c){
-  const svg = document.getElementById('minefieldSvg');
-  if (!svg) return null;
-  // rely on renderBoard ordering: centers pushed row-major -> each cell creates polygon then text
-  const rows = gameGrid.rows, cols = gameGrid.cols;
-  const linear = idx(rows,cols,r,c);
-  // polygon is at child index linear*2
-  return linear;
+// map cell (r,c) to polygon/text pair index assumes row-major render order
+function findChildIndices(r,c){
+  const linear = idx(gameGrid.rows, gameGrid.cols, r, c);
+  return { polyIndex: linear*2, textIndex: linear*2 + 1 };
 }
 
-// handlers (attach click/context) - updated to trigger animations
+// handlers
 function attachHandlers(el,r,c){
   el.addEventListener('click', (e)=>{
     e.stopPropagation();
@@ -206,23 +209,20 @@ function attachHandlers(el,r,c){
 
     const flagModeActive = document.body.classList.contains('flag-mode');
     if (flagModeActive){
-      const result = toggleFlag(gameGrid,r,c);
-      if (result !== null){
-        // animate the flagged polygon and label if present
+      const res = toggleFlag(gameGrid,r,c);
+      if (res !== null){
+        // small visual nudge for flag placement; keep it subtle and centered
         const svg = document.getElementById('minefieldSvg');
-        const polyIdx = findPolygonIndexForCell(r,c);
-        if (svg && polyIdx!=null){
-          const poly = svg.children[polyIdx * 2];
-          const txt = svg.children[polyIdx * 2 + 1];
-          if (poly) { poly.classList.add('flagging'); setTimeout(()=> poly.classList.remove('flagging'), 420); }
-          if (txt) { txt.classList.add('flagging'); setTimeout(()=> txt.classList.remove('flagging'), 420); }
-        }
+        const { polyIndex, textIndex } = findChildIndices(r,c);
+        const poly = svg.children[polyIndex];
+        const txt = svg.children[textIndex];
+        if (poly) { poly.classList.add('flagging'); setTimeout(()=> poly.classList.remove('flagging'), 260); }
+        if (txt) { txt.classList.add('flagging'); setTimeout(()=> txt.classList.remove('flagging'), 260); }
       }
-      if (checkWin(gameGrid)){ onWin(); }
+      if (checkWin(gameGrid)) onWin();
       saveAll(); renderBoard(); return;
     }
 
-    // chord click behavior
     const cellObjNow = gameGrid.cells[idx(gameGrid.rows,gameGrid.cols,r,c)];
     if (cellObjNow.revealed && cellObjNow.count > 0){
       const flagged = countFlaggedNeighbors(gameGrid,r,c);
@@ -231,10 +231,13 @@ function attachHandlers(el,r,c){
         for (const [dr,dc] of squareOffsets(r,c,currentAdjacency)){
           const rr=r+dr, cc=c+dc; if (!inBounds(gameGrid.rows,gameGrid.cols,rr,cc)) continue;
           const neigh = gameGrid.cells[idx(gameGrid.rows,gameGrid.cols,rr,cc)];
-          if (!neigh.flagged && !neigh.revealed){ const res = revealCell(gameGrid,rr,cc); if (res.exploded) exploded=true; else scheduleRevealAnimation(r,c,res.changed); }
+          if (!neigh.flagged && !neigh.revealed){
+            const res = revealCell(gameGrid,rr,cc);
+            if (res.exploded) exploded=true; else scheduleRevealAnimation(r,c,res.changed);
+          }
         }
-        if (exploded){ onLose(); }
-        else { if (checkWin(gameGrid)){ onWin(); } }
+        if (exploded) onLose();
+        else { if (checkWin(gameGrid)) onWin(); }
         saveAll(); renderBoard(); return;
       }
       return;
@@ -248,12 +251,10 @@ function attachHandlers(el,r,c){
     }
 
     const res = revealCell(gameGrid,r,c);
-    if (res.exploded){
-      onLose();
-    } else {
-      // animate reveals with ripple from clicked cell
+    if (res.exploded){ onLose(); }
+    else {
       scheduleRevealAnimation(r,c,res.changed);
-      if (checkWin(gameGrid)){ onWin(); } else document.getElementById('msStatus').textContent='Playing...';
+      if (checkWin(gameGrid)) onWin(); else document.getElementById('msStatus').textContent='Playing...';
     }
     saveAll(); renderBoard();
   });
@@ -261,7 +262,7 @@ function attachHandlers(el,r,c){
   el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); e.stopPropagation(); if (!running) return; toggleFlag(gameGrid,r,c); if (checkWin(gameGrid)){ onWin(); } saveAll(); renderBoard(); });
 }
 
-// Win/Lose handlers with gentle animations
+// Win/Lose
 function onWin(){
   running = false;
   stopTimer();
@@ -270,19 +271,16 @@ function onWin(){
     const winTime = document.getElementById('msTimer') ? document.getElementById('msTimer').textContent : '';
     const wt = document.getElementById('winTime'); if (wt) wt.textContent = `Time: ${winTime}`;
 
-    // add a brief wave animation on visible polys
     const svg = document.getElementById('minefieldSvg');
     if (svg){
-      const total = svg.children.length / 2;
-      // trigger in outward waves by index groups
+      const total = Math.floor(svg.children.length/2);
       for (let i=0;i<total;i++){
         const poly = svg.children[i*2];
         if (!poly) continue;
-        setTimeout(()=> poly.classList.add('win-wave'), i % 12 * 18);
-        setTimeout(()=> poly.classList.remove('win-wave'), 1000 + (i % 12 * 18));
+        setTimeout(()=> poly.classList.add('win-wave'), (i % 10) * 26);
+        setTimeout(()=> poly.classList.remove('win-wave'), 1000 + (i % 10) * 26);
       }
     }
-
     const overlay = document.getElementById('winOverlay'); if (overlay) overlay.style.display = 'flex';
   }
 }
@@ -295,7 +293,7 @@ function onLose(){
   renderBoard();
 }
 
-// controls & wiring
+// controls & UI wiring
 function startNewGame(){
   resetTimer();
   const rows = Math.max(3, Number((document.getElementById('msRows')||{value:12}).value || 12));
@@ -333,7 +331,14 @@ function wireControls(){
     persistSettings(); renderBoard(); saveAll();
   });
 
-  if (theme) theme.addEventListener('change', (e)=>{ document.body.setAttribute('data-theme', e.target.value || 'dark-ocean'); persistSettings(); saveAll(); renderBoard(); });
+  // theme change: immediate and persisted
+  if (theme) theme.addEventListener('change', (e)=>{
+    const t = e.target.value || 'dark-ocean';
+    document.body.setAttribute('data-theme', t);
+    persistSettings();
+    saveAll();
+    renderBoard();
+  });
 
   if (deleteAdjBtn){
     deleteAdjBtn.addEventListener('click', ()=>{
@@ -472,6 +477,7 @@ function loadAll(){
   isLoading = false;
 }
 
+// export / import (unchanged)
 function exportStateString(){
   const settings = {
     rows: Number(document.getElementById('msRows').value),
@@ -481,8 +487,8 @@ function exportStateString(){
     theme: document.getElementById('themeSelect').value
   };
   const game = gameGrid ? {
-    mines: gameGrid.cells.map((c,i)=> c.mine ? i : -1).filter(i=>i>=0),
-    revealed: gameGrid.cells.map((c,i)=> c.revealed ? i : -1).filter(i=>i>=0),
+    mines: gameGrid.cells.map((c,i)=> c.mine ? i : -1).filter(i=> i>=0),
+    revealed: gameGrid.cells.map((c,i)=> c.revealed ? i : -1).filter(i=> i>=0),
     flagged: gameGrid.cells.map((c,i)=> c.flagged ? i : -1).filter(i=> i>=0),
     firstClick, running
   } : null;
@@ -533,15 +539,8 @@ function flashStatus(txt){
   setTimeout(()=> el.textContent = prev, 1200);
 }
 
-/* adjacency editor modal + helpers */
-function openAdjModal(){
-  document.getElementById('adjModal').setAttribute('aria-hidden','false');
-  document.querySelectorAll('#adjModal .tab').forEach(t=> t.classList.remove('active'));
-  document.querySelector('#adjModal .tab[data-tab="editor"]').classList.add('active');
-  document.querySelectorAll('#adjModal .tabpane').forEach(p=> p.classList.remove('active'));
-  document.getElementById('editorTab').classList.add('active');
-  initEditorGrid();
-}
+/* adjacency editor modal (unchanged) */
+function openAdjModal(){ document.getElementById('adjModal').setAttribute('aria-hidden','false'); document.querySelectorAll('#adjModal .tab').forEach(t=> t.classList.remove('active')); document.querySelector('#adjModal .tab[data-tab="editor"]').classList.add('active'); document.querySelectorAll('#adjModal .tabpane').forEach(p=> p.classList.remove('active')); document.getElementById('editorTab').classList.add('active'); initEditorGrid(); }
 function closeAdjModal(){ document.getElementById('adjModal').setAttribute('aria-hidden','true'); }
 function openPasteModal(){ document.getElementById('pasteModal').setAttribute('aria-hidden','false'); }
 function closePasteModal(){ document.getElementById('pasteModal').setAttribute('aria-hidden','true'); }
@@ -600,37 +599,10 @@ function populateCustomAdjToDropdown(){
 
 /* preview helper */
 let previewGame = null;
-function startPreview(){
-  const pr = Number(document.getElementById('previewRows').value || 9);
-  const pc = Number(document.getElementById('previewCols').value || 9);
-  const pm = Number(document.getElementById('previewMines').value || 10);
-  previewGame = createGrid(pr,pc);
-  placeMines(previewGame, pm, [Math.floor(pr/2), Math.floor(pc/2)]);
-  computeCounts(previewGame, document.getElementById('adjacencySelect').value);
-  renderPreview(previewGame, 'previewArea');
-}
-function renderPreview(grid, hostId){
-  const host = document.getElementById(hostId);
-  if (!host) return;
-  host.innerHTML = '';
-  const rows = grid.rows, cols = grid.cols;
-  const area = document.createElement('div');
-  area.style.display='grid';
-  area.style.gridTemplateColumns = `repeat(${cols},22px)`;
-  area.style.gap='4px';
-  for (let r=0;r<rows;r++){
-    for (let c=0;c<cols;c++){
-      const i = idx(rows,cols,r,c);
-      const el = document.createElement('div');
-      el.style.width='22px'; el.style.height='22px'; el.style.background='rgba(255,255,255,0.02)'; el.style.display='flex'; el.style.alignItems='center'; el.style.justifyContent='center';
-      if (r === Math.floor(rows/2) && c === Math.floor(cols/2) && grid.cells[i].mine) el.textContent='💣';
-      area.appendChild(el);
-    }
-  }
-  host.appendChild(area);
-}
+function startPreview(){ const pr = Number(document.getElementById('previewRows').value || 9); const pc = Number(document.getElementById('previewCols').value || 9); const pm = Number(document.getElementById('previewMines').value || 10); previewGame = createGrid(pr,pc); placeMines(previewGame, pm, [Math.floor(pr/2), Math.floor(pc/2)]); computeCounts(previewGame, document.getElementById('adjacencySelect').value); renderPreview(previewGame, 'previewArea'); }
+function renderPreview(grid, hostId){ const host = document.getElementById(hostId); if (!host) return; host.innerHTML = ''; const rows = grid.rows, cols = grid.cols; const area = document.createElement('div'); area.style.display='grid'; area.style.gridTemplateColumns = `repeat(${cols},22px)`; area.style.gap='4px'; for (let r=0;r<rows;r++){ for (let c=0;c<cols;c++){ const i = idx(rows,cols,r,c); const el = document.createElement('div'); el.style.width='22px'; el.style.height='22px'; el.style.background='rgba(255,255,255,0.02)'; el.style.display='flex'; el.style.alignItems='center'; el.style.justifyContent='center'; if (r === Math.floor(rows/2) && c === Math.floor(cols/2) && grid.cells[i].mine) el.textContent='💣'; area.appendChild(el); } } host.appendChild(area); }
 
-/* zoom/pan */
+/* zoom/pan (unchanged) */
 function setupZoomPan(){
   const frame = document.getElementById('minefieldFrame');
   const container = document.getElementById('minefieldContainer');
@@ -657,32 +629,4 @@ function setupZoomPan(){
   const pointers = new Map();
   function dist(a,b){ const dx=b.clientX - a.clientX, dy = b.clientY - a.clientY; return Math.hypot(dx,dy); }
   frame.addEventListener('pointerdown', e=> pointers.set(e.pointerId,e));
-  frame.addEventListener('pointermove', e=>{ if (!pointers.has(e.pointerId)) return; pointers.set(e.pointerId,e); if (pointers.size===2){ const it = pointers.values(); const a = it.next().value, b = it.next().value; const d = dist(a,b); if (frame._lastD==null) frame._lastD = d; const ratio = d / frame._lastD; frame._lastD = d; view.scale = Math.max(0.1, Math.min(6, view.scale * ratio)); renderBoard(); }});
-  function clearPointer(e){ pointers.delete(e.pointerId); frame._lastD = null; }
-  frame.addEventListener('pointerup', clearPointer); frame.addEventListener('pointercancel', clearPointer); frame.addEventListener('pointerout', clearPointer); frame.addEventListener('pointerleave', clearPointer);
-
-  frame.addEventListener('wheel', (e)=>{ if (Math.abs(e.deltaY) > Math.abs(e.deltaX)){ const delta = -e.deltaY; const factor = 1 + Math.sign(delta) * Math.min(0.14, Math.abs(delta)/600); view.scale = Math.max(0.1, Math.min(6, view.scale * factor)); e.preventDefault(); renderBoard(); return; } }, { passive:false });
-
-  frame.addEventListener('keydown', (e)=>{ if (e.key === '+' || e.key === '='){ view.scale = Math.min(6, view.scale * 1.12); renderBoard(); } if (e.key === '-' || e.key === '_'){ view.scale = Math.max(0.1, view.scale / 1.12); renderBoard(); } if (e.key === '0'){ view.scale = 1; view.tx=0; view.ty=0; renderBoard(); } });
-}
-
-/* init */
-function init(){
-  loadAll();
-  wireControls();
-  populateCustomAdjToDropdown();
-  setupZoomPan();
-  if (!gameGrid) startNewGame();
-  renderBoard();
-
-  document.querySelectorAll('#adjModal .tab').forEach(btn=>{
-    btn.addEventListener('click', ()=>{ document.querySelectorAll('#adjModal .tab').forEach(t=>t.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('#adjModal .tabpane').forEach(p=>p.classList.remove('active')); document.getElementById(btn.dataset.tab + 'Tab').classList.add('active'); });
-  });
-
-  const pasteModal = document.getElementById('pasteModal');
-  if (pasteModal) pasteModal.addEventListener('click', (e)=>{ if (e.target === e.currentTarget) closePasteModal(); });
-  const adjModal = document.getElementById('adjModal');
-  if (adjModal) adjModal.addEventListener('click', (e)=>{ if (e.target === e.currentTarget) closeAdjModal(); });
-}
-
-document.addEventListener('DOMContentLoaded', init);
+  frame.addEventListener('pointermove', e=>{ if (!pointers.has(e.pointerId)) return; pointers.set(e.pointerId,e); if (pointers.size===2){ const it = pointers.values(); const a = it.next().value, b = it.next().value; const d = dist(a,b); if (frame._lastD==null) frame._lastD = d; const ratio = d / frame
