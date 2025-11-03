@@ -52,6 +52,7 @@
 
     <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
       <div id="msStatus">Ready</div>
+      <div id="msTimer">0:00</div>
       <button id="openAdjEditor" class="ms-btn">Adjacency Editor</button>
       <button id="copyGame" class="ms-btn">Copy</button>
       <button id="pasteGame" class="ms-btn">Paste</button>
@@ -123,6 +124,13 @@
       </div>
     </div>
   </div>
+<div id="winOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:300; display:flex; align-items:center; justify-content:center;">
+  <div style="background:var(--panel); padding:40px; border-radius:12px; text-align:center;">
+    <h2 style="color:var(--accent); margin:0 0 10px;">🎉 You Win! 🎉</h2>
+    <div id="winTime" style="color:var(--sub); margin-bottom:20px;"></div>
+    <button onclick="document.getElementById('winOverlay').style.display='none'" class="ms-btn primary">Close</button>
+  </div>
+</div>
 
   <script src="app.js"></script>
 </body>
