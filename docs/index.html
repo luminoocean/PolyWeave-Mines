@@ -65,7 +65,6 @@
       <div class="minefield-shell" id="minefieldShell">
         <div class="minefield-frame" id="minefieldFrame" tabindex="0">
           <div class="minefield-container" id="minefieldContainer" tabindex="0" aria-label="Minefield. Drag frame to pan, pinch/trackpad/ctrl+wheel or wheel to zoom.">
-            <!-- The SVG cells will receive animation classes from app.js -->
             <svg id="minefieldSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin meet"></svg>
           </div>
         </div>
@@ -127,10 +126,10 @@
   </div>
 
   <!-- Win overlay -->
-  <div id="winOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:300; align-items:center; justify-content:center;">
-    <div class="win-sheet" style="background:var(--panel); padding:36px; border-radius:12px; text-align:center; min-width:280px;">
+  <div id="winOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:300; align-items:center; justify-content:center;">
+    <div class="win-sheet" style="background:var(--panel); padding:28px; border-radius:12px; text-align:center; min-width:260px;">
       <h2 class="win-title" style="margin:0 0 8px;">🎉 You Win! 🎉</h2>
-      <div id="winTime" class="win-sub" style="margin-bottom:14px;"></div>
+      <div id="winTime" class="win-sub" style="margin-bottom:12px;"></div>
       <div style="display:flex; gap:8px; justify-content:center;">
         <button id="winClose" class="ms-btn primary">Close</button>
         <button id="winNew" class="ms-btn">New Game</button>
