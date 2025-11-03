@@ -195,19 +195,29 @@ function scheduleRevealAnimation(originR, originC, changedCells){
 function scheduleRipple(originR, originC){
   const svg = document.getElementById('minefieldSvg');
   if (!svg) return;
-  const neighbors = [[0,0],[0,1],[1,0],[-1,0],[0,-1]];
-  neighbors.forEach(([dr,dc], i) => {
-    const r = originR + dr, c = originC + dc;
-    if (!inBounds(gameGrid.rows, gameGrid.cols, r, c)) return;
-    const linear = idx(gameGrid.rows, gameGrid.cols, r, c);
-    const poly = svg.children[linear*2];
-    if (!poly) return;
-    setTimeout(()=> {
-      poly.classList.add('ripple');
-      setTimeout(()=> poly.classList.remove('ripple'), 420);
-    }, i * 28);
-  });
+  
+  // Create rings up to distance 4
+  for (let dist = 0; dist <= 4; dist++) {
+    for (let r = originR - dist; r <= originR + dist; r++) {
+      for (let c = originC - dist; c <= originC + dist; c++) {
+        // Only tiles at exactly this distance
+        if (Math.max(Math.abs(r - originR), Math.abs(c - originC)) !== dist) continue;
+        if (!inBounds(gameGrid.rows, gameGrid.cols, r, c)) continue;
+        
+        const linear = idx(gameGrid.rows, gameGrid.cols, r, c);
+        const poly = svg.children[linear * 2];
+        if (!poly) continue;
+        
+        // Stagger by distance for wave effect
+        setTimeout(() => {
+          poly.classList.add('border-ripple');
+          setTimeout(() => poly.classList.remove('border-ripple'), 400);
+        }, dist * 60);
+      }
+    }
+  }
 }
+
 
 function findChildIndices(r,c){
   const linear = idx(gameGrid.rows, gameGrid.cols, r, c);
