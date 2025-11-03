@@ -69,6 +69,7 @@ svg polygon{
   stroke-width: 1.25;
   fill: rgba(2,10,20,0.9); /* original dark blue */
 }
+svg polygon:not(.revealed) + text{ opacity: 1; }
 
 /* Hover animation: subtle lift */
 svg polygon:hover{ transform: translateY(-3%) scale(1.02); filter: drop-shadow(0 6px 12px rgba(0,0,0,0.25)); }
