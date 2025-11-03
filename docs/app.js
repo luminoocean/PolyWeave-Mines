@@ -9,6 +9,14 @@ let running = false;
 let firstClick = true;
 let currentAdjacency = 'all8';
 let customAdj = {}; // name -> offsets array
+<div id="winOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:300; display:flex; align-items:center; justify-content:center;">
+  <div style="background:var(--panel); padding:40px; border-radius:12px; text-align:center;">
+    <h2 style="color:var(--accent); margin:0 0 10px;">🎉 You Win! 🎉</h2>
+    <div id="winTime" style="color:var(--sub); margin-bottom:20px;"></div>
+    <button onclick="document.getElementById('winOverlay').style.display='none'" class="ms-btn primary">Close</button>
+  </div>
+</div>
+
 const view = { scale: 0.6, tx: 0, ty: 0 };
 
 const STORAGE_KEY = 'polyweave_state_v1';
@@ -172,11 +180,42 @@ function attachHandlers(el,r,c){
       }
       return;
     }
+function startTimer(){
+  if (timerInterval) return;
+  startTime = Date.now() - (elapsedSeconds * 1000);
+  timerInterval = setInterval(updateTimer, 100);
+}
+
+function stopTimer(){
+  if (timerInterval){
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
+
+function resetTimer(){
+  stopTimer();
+  elapsedSeconds = 0;
+  document.getElementById('msTimer').textContent = '0:00';
+}
+
+function updateTimer(){
+  if (!startTime) return;
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  elapsedSeconds = elapsed;
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  document.getElementById('msTimer').textContent = `${mins}:${secs.toString().padStart(2,'0')}`;
+}
 
     if (firstClick){
       const mines = Math.max(1, Number((document.getElementById('msMines')||{value:40}).value || 40));
       placeMines(gameGrid, mines, [r,c]);
       firstClick = false;
+      stopTimer();
+document.getElementById('winTime').textContent = `Time: ${document.getElementById('msTimer').textContent}`;
+document.getElementById('winOverlay').style.display = 'flex';
+
     }
     const res = revealCell(gameGrid,r,c);
     if (res.exploded){
