@@ -166,6 +166,15 @@ svg text.flagging{ transform: translateY(-2px) scale(1.01); }
 .win-sheet{ transition: transform 220ms var(--transition-fast), opacity 180ms ease; }
 .win-title{ color:var(--accent); font-size:18px; }
 .win-sub{ color:var(--sub); }
+/* Border ripple - makes stroke briefly glow/thicken */
+@keyframes borderPulse {
+  0% { stroke-width: 1.25; stroke: rgba(255,255,255,0.06); }
+  40% { stroke-width: 2.5; stroke: var(--accent); opacity: 1; }
+  100% { stroke-width: 1.25; stroke: rgba(255,255,255,0.06); }
+}
+.border-ripple {
+  animation: borderPulse 400ms ease-out;
+}
 
 /* editor */
 .editor-grid{ display:grid; gap:2px; grid-template-columns: repeat(15, 18px); }
