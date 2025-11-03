@@ -1,6 +1,11 @@
 // app.js
-// Full updated file: autosave, custom adjacency editor, copy/paste import-export,
-// mobile flag-mode, pan/zoom, chording, and delete custom adjacency button next to dropdown.
+// Full updated app.js with:
+// - autosave (settings + game + custom adjacencies + view)
+// - custom adjacency editor + delete button
+// - copy/paste import-export
+// - timer
+// - win overlay + clearer victory UX
+// - mobile flag-mode, pan/zoom, chording
 
 const NUMBER_COLORS = {1:'#3ec7ff',2:'#ff6b6b',3:'#ffd27a',4:'#a88cff',5:'#ff9fb3',6:'#7ce7ff',7:'#d3d3d3',8:'#b0c4de'};
 
@@ -9,18 +14,15 @@ let running = false;
 let firstClick = true;
 let currentAdjacency = 'all8';
 let customAdj = {}; // name -> offsets array
-<div id="winOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:300; display:flex; align-items:center; justify-content:center;">
-  <div style="background:var(--panel); padding:40px; border-radius:12px; text-align:center;">
-    <h2 style="color:var(--accent); margin:0 0 10px;">🎉 You Win! 🎉</h2>
-    <div id="winTime" style="color:var(--sub); margin-bottom:20px;"></div>
-    <button onclick="document.getElementById('winOverlay').style.display='none'" class="ms-btn primary">Close</button>
-  </div>
-</div>
-
 const view = { scale: 0.6, tx: 0, ty: 0 };
 
 const STORAGE_KEY = 'polyweave_state_v1';
 const CUSTOM_KEY = 'polyweave_custom_adj_v1';
+
+// Timer vars
+let timerInterval = null;
+let startTime = null;
+let elapsedSeconds = 0;
 
 // utils
 function idx(rows,cols,r,c){ return r*cols + c; }
@@ -140,7 +142,9 @@ function revealCell(grid,r,c){
     if (!cl || cl.revealed || cl.flagged) continue;
     cl.revealed = true; changed.push([rr,cc]);
     if (cl.count === 0){
-      for (const [dr,dc] of squareOffsets(rr,cc,currentAdjacency)){ const nr = rr+dr, nc = cc+dc; if (!inBounds(rows,cols,nr,nc)) continue; const ni = idx(rows,cols,nr,nc); if (!cells[ni].revealed && !cells[ni].flagged) stack.push([nr,nc]); }
+      for (const [dr,dc] of squareOffsets(rr,cc,currentAdjacency)){
+        const nr = rr+dr, nc = cc+dc; if (!inBounds(rows,cols,nr,nc)) continue; const ni = idx(rows,cols,nr,nc); if (!cells[ni].revealed && !cells[ni].flagged) stack.push([nr,nc]);
+      }
     }
   }
   return { changed, exploded:false };
@@ -148,6 +152,31 @@ function revealCell(grid,r,c){
 function toggleFlag(grid,r,c){ const {rows,cols,cells}=grid; if (!inBounds(rows,cols,r,c)) return null; const i=idx(rows,cols,r,c); const cell=cells[i]; if (!cell || cell.revealed) return null; cell.flagged = !cell.flagged; return cell.flagged; }
 function checkWin(grid){ return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed)); }
 function countFlaggedNeighbors(grid,r,c){ let count=0; for (const [dr,dc] of squareOffsets(r,c,currentAdjacency)){ const rr=r+dr, cc=c+dc; if (!inBounds(grid.rows,grid.cols,rr,cc)) continue; if (grid.cells[idx(grid.rows,grid.cols,rr,cc)].flagged) count++; } return count; }
+
+// Timer functions
+function startTimer(){
+  if (timerInterval) return;
+  startTime = Date.now() - (elapsedSeconds * 1000);
+  timerInterval = setInterval(updateTimer, 100);
+}
+function stopTimer(){
+  if (timerInterval){ clearInterval(timerInterval); timerInterval = null; }
+}
+function resetTimer(){
+  stopTimer();
+  elapsedSeconds = 0;
+  const el = document.getElementById('msTimer');
+  if (el) el.textContent = '0:00';
+}
+function updateTimer(){
+  if (!startTime) return;
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  elapsedSeconds = elapsed;
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  const el = document.getElementById('msTimer');
+  if (el) el.textContent = `${mins}:${secs.toString().padStart(2,'0')}`;
+}
 
 // handlers
 function attachHandlers(el,r,c){
@@ -159,7 +188,7 @@ function attachHandlers(el,r,c){
     const flagModeActive = document.body.classList.contains('flag-mode');
     if (flagModeActive){
       toggleFlag(gameGrid,r,c);
-      if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; }
+      if (checkWin(gameGrid)){ onWin(); }
       saveAll(); renderBoard(); return;
     }
 
@@ -174,60 +203,44 @@ function attachHandlers(el,r,c){
           const neigh = gameGrid.cells[idx(gameGrid.rows,gameGrid.cols,rr,cc)];
           if (!neigh.flagged && !neigh.revealed){ const res = revealCell(gameGrid,rr,cc); if (res.exploded) exploded=true; }
         }
-        if (exploded){ running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); document.getElementById('msStatus').textContent='BOOM'; }
-        else { if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; } }
+        if (exploded){ onLose(); }
+        else { if (checkWin(gameGrid)){ onWin(); } }
         saveAll(); renderBoard(); return;
       }
       return;
     }
-function startTimer(){
-  if (timerInterval) return;
-  startTime = Date.now() - (elapsedSeconds * 1000);
-  timerInterval = setInterval(updateTimer, 100);
-}
-
-function stopTimer(){
-  if (timerInterval){
-    clearInterval(timerInterval);
-    timerInterval = null;
-  }
-}
-
-function resetTimer(){
-  stopTimer();
-  elapsedSeconds = 0;
-  document.getElementById('msTimer').textContent = '0:00';
-}
-
-function updateTimer(){
-  if (!startTime) return;
-  const elapsed = Math.floor((Date.now() - startTime) / 1000);
-  elapsedSeconds = elapsed;
-  const mins = Math.floor(elapsed / 60);
-  const secs = elapsed % 60;
-  document.getElementById('msTimer').textContent = `${mins}:${secs.toString().padStart(2,'0')}`;
-}
 
     if (firstClick){
       const mines = Math.max(1, Number((document.getElementById('msMines')||{value:40}).value || 40));
       placeMines(gameGrid, mines, [r,c]);
       firstClick = false;
-      stopTimer();
-document.getElementById('winTime').textContent = `Time: ${document.getElementById('msTimer').textContent}`;
-document.getElementById('winOverlay').style.display = 'flex';
+      // start timer on first real action
+      startTimer();
+    }
 
-    }
     const res = revealCell(gameGrid,r,c);
-    if (res.exploded){
-      running=false; gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; }); document.getElementById('msStatus').textContent='BOOM';
-    } else {
-      if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; }
-      else document.getElementById('msStatus').textContent='Playing...';
-    }
+    if (res.exploded){ onLose(); }
+    else { if (checkWin(gameGrid)){ onWin(); } else document.getElementById('msStatus').textContent='Playing...'; }
     saveAll(); renderBoard();
   });
 
-  el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); e.stopPropagation(); if (!running) return; toggleFlag(gameGrid,r,c); if (checkWin(gameGrid)){ running=false; document.getElementById('msStatus').textContent='You win!'; } saveAll(); renderBoard(); });
+  el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); e.stopPropagation(); if (!running) return; toggleFlag(gameGrid,r,c); if (checkWin(gameGrid)){ onWin(); } saveAll(); renderBoard(); });
+}
+
+// Win/Lose handlers
+function onWin(){
+  running = false;
+  stopTimer();
+  document.getElementById('msStatus').textContent = 'You win!';
+  const winTime = document.getElementById('msTimer') ? document.getElementById('msTimer').textContent : '';
+  const wt = document.getElementById('winTime'); if (wt) wt.textContent = `Time: ${winTime}`;
+  const overlay = document.getElementById('winOverlay'); if (overlay) overlay.style.display = 'flex';
+}
+function onLose(){
+  running = false;
+  stopTimer();
+  gameGrid.cells.forEach(cl=>{ if (cl.mine) cl.revealed=true; });
+  document.getElementById('msStatus').textContent = 'BOOM';
 }
 
 // controls & UI wiring
@@ -278,14 +291,13 @@ function wireControls(){
       if (!confirm(`Delete custom adjacency "${currentAdjacency}"? This cannot be undone.`)) return;
       delete customAdj[currentAdjacency];
       populateCustomAdjToDropdown();
-      // switch to default
       const sel = document.getElementById('adjacencySelect');
       if (sel){ sel.value = 'all8'; currentAdjacency = 'all8'; }
       deleteAdjBtn.style.display = 'none';
       saveAll(); renderBoard();
     });
     // initial visibility
-    if (deleteAdjBtn) deleteAdjBtn.style.display = 'none';
+    deleteAdjBtn.style.display = 'none';
   }
 
   // flag-mode button
@@ -315,6 +327,12 @@ function wireControls(){
 
   const previewStart = document.getElementById('previewStart');
   if (previewStart) previewStart.addEventListener('click', ()=>{ startPreview(); });
+
+  // win overlay buttons
+  const winClose = document.getElementById('winClose');
+  if (winClose) winClose.addEventListener('click', ()=>{ const overlay = document.getElementById('winOverlay'); if (overlay) overlay.style.display = 'none'; });
+  const winNew = document.getElementById('winNew');
+  if (winNew) winNew.addEventListener('click', ()=>{ const overlay = document.getElementById('winOverlay'); if (overlay) overlay.style.display = 'none'; startNewGame(); });
 }
 
 // autosave / persistence
@@ -347,7 +365,8 @@ function saveAll(){
         firstClick, running
       } : null,
       customAdj,
-      view
+      view,
+      elapsedSeconds
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     localStorage.setItem(CUSTOM_KEY, JSON.stringify(customAdj));
@@ -406,6 +425,7 @@ function loadAll(){
     }
 
     if (raw && raw.view){ Object.assign(view, raw.view); }
+    if (raw && typeof raw.elapsedSeconds === 'number'){ elapsedSeconds = raw.elapsedSeconds; startTime = Date.now() - (elapsedSeconds * 1000); updateTimer(); }
   }catch(e){ console.warn('load failed', e); }
 }
 
@@ -467,7 +487,7 @@ function importStateString(str){
   saveAll(); renderBoard();
 }
 
-// small status flash
+// helper: small status flash
 function flashStatus(txt){
   const el = document.getElementById('msStatus');
   if (!el) return;
@@ -476,7 +496,7 @@ function flashStatus(txt){
   setTimeout(()=> el.textContent = prev, 1200);
 }
 
-/* --- adjacency editor modal --- */
+// adjacency editor modal
 function openAdjModal(){
   document.getElementById('adjModal').setAttribute('aria-hidden','false');
   document.querySelectorAll('#adjModal .tab').forEach(t=> t.classList.remove('active'));
@@ -499,11 +519,8 @@ function initEditorGrid(){
       const cell = document.createElement('div');
       cell.className = 'editor-cell';
       cell.dataset.r = r; cell.dataset.c = c;
-      if (r === Math.floor(size/2) && c === Math.floor(size/2)){
-        cell.classList.add('editor-centre'); cell.innerHTML = '💣'; cell.style.cursor='default'; cell.dataset.center = '1';
-      } else {
-        cell.addEventListener('click', editorToggleCell);
-      }
+      if (r === Math.floor(size/2) && c === Math.floor(size/2)){ cell.classList.add('editor-centre'); cell.innerHTML = '💣'; cell.style.cursor='default'; cell.dataset.center = '1'; }
+      else cell.addEventListener('click', editorToggleCell);
       gridEl.appendChild(cell);
     }
   }
@@ -513,6 +530,7 @@ function initEditorGrid(){
   if (saveBtn) saveBtn.onclick = saveEditorPattern;
 }
 
+// editor helpers
 function editorToggleCell(e){ const el = e.currentTarget; if (el.dataset.center) return; el.classList.toggle('on'); }
 function clearEditor(){ document.querySelectorAll('#editorGrid .editor-cell.on').forEach(x=> x.classList.remove('on')); }
 function saveEditorPattern(){
@@ -532,6 +550,7 @@ function saveEditorPattern(){
   if (nameInput) nameInput.value = '';
 }
 
+// populate user patterns into adjacency dropdown
 function populateCustomAdjToDropdown(){
   const sel = document.getElementById('adjacencySelect');
   if (!sel) return;
@@ -544,7 +563,7 @@ function populateCustomAdjToDropdown(){
   }
 }
 
-/* --- preview (small game inside modal) --- */
+// preview small minesweeper in modal
 let previewGame = null;
 function startPreview(){
   const pr = Number(document.getElementById('previewRows').value || 9);
@@ -576,7 +595,7 @@ function renderPreview(grid, hostId){
   host.appendChild(area);
 }
 
-/* --- setup zoom/pan (frame-level) --- */
+// zoom/pan
 function setupZoomPan(){
   const frame = document.getElementById('minefieldFrame');
   const container = document.getElementById('minefieldContainer');
@@ -584,7 +603,6 @@ function setupZoomPan(){
   view.scale = 0.6; view.tx = 0; view.ty = 0;
   renderBoard();
 
-  // pan with delayed capture so clicks still register
   let dragging=false, maybeDrag=null; const DRAG_THRESHOLD=6;
   frame.addEventListener('pointerdown', (e)=>{ if (e.pointerType==='mouse' && e.button !== 0) return; maybeDrag = {pointerId:e.pointerId, startX:e.clientX, startY:e.clientY, startTx:view.tx, startTy:view.ty}; });
   frame.addEventListener('pointermove', (e)=>{
@@ -601,7 +619,6 @@ function setupZoomPan(){
   function endPointer(e){ if (maybeDrag && maybeDrag.pointerId === e.pointerId){ dragging=false; maybeDrag=null; frame.releasePointerCapture && frame.releasePointerCapture(e.pointerId); } }
   frame.addEventListener('pointerup', endPointer); frame.addEventListener('pointercancel', endPointer); frame.addEventListener('pointerleave', endPointer);
 
-  // two-pointer pinch/trackpad gesture
   const pointers = new Map();
   function dist(a,b){ const dx=b.clientX - a.clientX, dy = b.clientY - a.clientY; return Math.hypot(dx,dy); }
   frame.addEventListener('pointerdown', e=> pointers.set(e.pointerId,e));
@@ -609,14 +626,12 @@ function setupZoomPan(){
   function clearPointer(e){ pointers.delete(e.pointerId); frame._lastD = null; }
   frame.addEventListener('pointerup', clearPointer); frame.addEventListener('pointercancel', clearPointer); frame.addEventListener('pointerout', clearPointer); frame.addEventListener('pointerleave', clearPointer);
 
-  // wheel zoom anywhere in frame (vertical scroll -> zoom)
   frame.addEventListener('wheel', (e)=>{ if (Math.abs(e.deltaY) > Math.abs(e.deltaX)){ const delta = -e.deltaY; const factor = 1 + Math.sign(delta) * Math.min(0.14, Math.abs(delta)/600); view.scale = Math.max(0.1, Math.min(6, view.scale * factor)); e.preventDefault(); renderBoard(); return; } }, { passive:false });
 
-  // keyboard shortcuts
   frame.addEventListener('keydown', (e)=>{ if (e.key === '+' || e.key === '='){ view.scale = Math.min(6, view.scale * 1.12); renderBoard(); } if (e.key === '-' || e.key === '_'){ view.scale = Math.max(0.1, view.scale / 1.12); renderBoard(); } if (e.key === '0'){ view.scale = 1; view.tx=0; view.ty=0; renderBoard(); } });
 }
 
-/* --- init --- */
+// init
 function init(){
   loadAll();
   wireControls();
