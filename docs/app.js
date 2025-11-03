@@ -423,13 +423,9 @@ function loadAll(){
       firstClick = !!s.firstClick;
       running = !!s.running;
       computeCounts(gameGrid, document.getElementById('adjacencySelect').value);
-
-      // Prevent auto-showing the win overlay on load.
-      // If the saved game was already won, show status without the overlay.
-    if (checkWin(gameGrid) && !running){
+if (checkWin(gameGrid) && !running){
   document.getElementById('msStatus').textContent = 'You win!';
 }
-
 
     }
 
