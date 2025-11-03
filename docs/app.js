@@ -1,7 +1,7 @@
 // app.js
-// Updated: avoid showing win overlay on load; if a saved game is already won, show status without overlay.
-// Full file with autosave, custom adjacency editor, copy/paste import-export,
-// timer, win overlay UX, mobile flag-mode, pan/zoom, chording, and delete custom adjacency.
+// Full updated file: prevents showing win overlay during load by using isLoading flag.
+// Includes autosave, custom adjacency editor, copy/paste import-export,
+// timer, win overlay UX, mobile flag-mode, pan/zoom, chording, delete custom adjacency.
 
 const NUMBER_COLORS = {1:'#3ec7ff',2:'#ff6b6b',3:'#ffd27a',4:'#a88cff',5:'#ff9fb3',6:'#7ce7ff',7:'#d3d3d3',8:'#b0c4de'};
 
@@ -10,6 +10,7 @@ let running = false;
 let firstClick = true;
 let currentAdjacency = 'all8';
 let customAdj = {}; // name -> offsets array
+let isLoading = false;
 const view = { scale: 0.6, tx: 0, ty: 0 };
 
 const STORAGE_KEY = 'polyweave_state_v1';
@@ -228,9 +229,11 @@ function onWin(){
   running = false;
   stopTimer();
   document.getElementById('msStatus').textContent = 'You win!';
-  const winTime = document.getElementById('msTimer') ? document.getElementById('msTimer').textContent : '';
-  const wt = document.getElementById('winTime'); if (wt) wt.textContent = `Time: ${winTime}`;
-  const overlay = document.getElementById('winOverlay'); if (overlay) overlay.style.display = 'flex';
+  if (!isLoading){
+    const winTime = document.getElementById('msTimer') ? document.getElementById('msTimer').textContent : '';
+    const wt = document.getElementById('winTime'); if (wt) wt.textContent = `Time: ${winTime}`;
+    const overlay = document.getElementById('winOverlay'); if (overlay) overlay.style.display = 'flex';
+  }
 }
 function onLose(){
   running = false;
@@ -371,6 +374,7 @@ function saveAll(){
 }
 
 function loadAll(){
+  isLoading = true;
   try{
     // Load custom patterns first so dropdown can include them before we set adjacency
     const savedCustom = JSON.parse(localStorage.getItem(CUSTOM_KEY) || '{}');
@@ -423,15 +427,12 @@ function loadAll(){
       // Prevent auto-showing the win overlay on load.
       // If the saved game was already won, show status without the overlay.
       if (checkWin(gameGrid)){
-        // If the saved state has running=true, keep playing (rare), otherwise set status text but do NOT call onWin().
         if (running){
-          // saved as running but already in winning state; stop timer and show overlay as an active win
-          // (this is an unusual case; we treat it as an actual win)
+          // saved as running but already in winning state; treat as win (rare)
           onWin();
         } else {
-          // saved as not running -> completed before; set status but keep overlay hidden
+          // completed before; set status text but KEEP overlay hidden
           document.getElementById('msStatus').textContent = 'You win!';
-          // ensure overlay hidden
           const overlay = document.getElementById('winOverlay'); if (overlay) overlay.style.display = 'none';
         }
       }
@@ -440,6 +441,7 @@ function loadAll(){
     if (raw && raw.view){ Object.assign(view, raw.view); }
     if (raw && typeof raw.elapsedSeconds === 'number'){ elapsedSeconds = raw.elapsedSeconds; startTime = Date.now() - (elapsedSeconds * 1000); updateTimer(); }
   }catch(e){ console.warn('load failed', e); }
+  isLoading = false;
 }
 
 // copy / paste compact encoding
