@@ -13,6 +13,9 @@ let customAdj = {}; // name -> offsets array
 let isLoading = false;
 const view = { scale: 0.6, tx: 0, ty: 0 };
 
+// Add gameSettings so DevAnalytics can read the live configuration
+let gameSettings = { rows: 12, columns: 16, mines: 40 };
+
 const STORAGE_KEY = 'polyweave_state_v1';
 const CUSTOM_KEY = 'polyweave_custom_adj_v1';
 
@@ -250,12 +253,20 @@ function startNewGame(){
   let mines = Math.max(1, Number((document.getElementById('msMines')||{value:40}).value || 40));
   mines = Math.min(mines, rows*cols - 1);
 
+  // Update shared gameSettings used by DevAnalytics
+  gameSettings = { rows: rows, columns: cols, mines: mines };
+
   gameGrid = createGrid(rows,cols);
   running = true; firstClick = true;
   document.getElementById('msStatus').textContent = 'Ready — first click is safe';
   currentAdjacency = (document.getElementById('adjacencySelect')||{}).value || 'all8';
   saveAll();
   renderBoard();
+
+  // Recheck secret combo after board is generated so DevAnalytics can activate
+  if (window.DevAnalytics) {
+    DevAnalytics.recheckAndInit();
+  }
 }
 
 function wireControls(){
@@ -445,9 +456,9 @@ function exportStateString(){
     theme: document.getElementById('themeSelect').value
   };
   const game = gameGrid ? {
-    mines: gameGrid.cells.map((c,i)=> c.mine ? i : -1).filter(i=>i>=0),
-    revealed: gameGrid.cells.map((c,i)=> c.revealed ? i : -1).filter(i=>i>=0),
-    flagged: gameGrid.cells.map((c,i)=> c.flagged ? i : -1).filter(i=>i>=0),
+    mines: gameGrid.cells.map((c,i)=> c.mine ? i : -1).filter(i=> i>=0),
+    revealed: gameGrid.cells.map((c,i)=> c.revealed ? i : -1).filter(i=> i>=0),
+    flagged: gameGrid.cells.map((c,i)=> c.flagged ? i : -1).filter(i=> i>=0),
     firstClick, running
   } : null;
   const payload = { v:1, s:settings, g:game, custom:customAdj };
@@ -645,10 +656,10 @@ function init(){
   setupZoomPan();
   if (!gameGrid) startNewGame();
   renderBoard();
-// After updating gameSettings and before generating the new board:
-if (window.DevAnalytics) {
-    DevAnalytics.recheckAndInit();
-}
+  // After updating gameSettings and before generating the new board:
+  if (window.DevAnalytics) {
+      DevAnalytics.recheckAndInit();
+  }
   // modal tab switching
   document.querySelectorAll('#adjModal .tab').forEach(btn=>{
     btn.addEventListener('click', ()=>{ document.querySelectorAll('#adjModal .tab').forEach(t=>t.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('#adjModal .tabpane').forEach(p=>p.classList.remove('active')); document.getElementById(btn.dataset.tab + 'Tab').classList.add('active'); });
