@@ -322,18 +322,36 @@
   // Attach to window so your game code can call DevAnalytics.logEvent(...)
   window.DevAnalytics = DevAnalytics;
 
-  // Initialize only if secret combo active; otherwise expose no-op start/stop
-  function initIfSecret() {
-    if (!isDevMode()) {
-      // still expose lightweight functions that do nothing until secret is set
-      console.info('[DevAnalytics] secret combo not met; analytics dormant');
-      return;
+// Initialize lightweight hooks that check conditions dynamically
+function setupDynamicChecks() {
+  // Always listen for 'D' key - check conditions when pressed
+  window.addEventListener('keydown', (e) => {
+    if ((e.key === 'd' || e.key === 'D') && isDevMode()) {
+      if (!document.getElementById(PANEL_ID)) {
+        ensureStorage();
+        if (!sessionInterval) startSession();
+        attachHooks();
+        showPanel();
+        console.info('[DevAnalytics] activated (press D to toggle panel)');
+      } else {
+        hidePanel();
+      }
     }
+  });
+}
 
-    // initialize storage and session
+// Always run lightweight setup
+setupDynamicChecks();
+
+// Make recheckAndInit actually start tracking when conditions are met
+DevAnalytics.recheckAndInit = function() {
+  if (isDevMode()) {
     ensureStorage();
-    startSession();
+    if (!sessionInterval) startSession();
     attachHooks();
+    console.info('[DevAnalytics] tracking started via recheck');
+  }
+};
 
     // keyboard toggle: press D to toggle panel (only when secret is set)
     window.addEventListener('keydown', (e) => {
