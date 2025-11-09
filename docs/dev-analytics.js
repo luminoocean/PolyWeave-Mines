@@ -353,10 +353,13 @@
     document.addEventListener('DOMContentLoaded', initIfSecret);
   }
 
-  // If your game changes gameSettings at runtime, call this to re-check and init
-  DevAnalytics.recheckAndInit = function recheckAndInit() {
-    if (isDevMode() && !document.getElementById(PANEL_ID)) {
+let analyticsInitialized = false;
+
+DevAnalytics.recheckAndInit = function recheckAndInit() {
+    if (isDevMode() && !analyticsInitialized) {
       initIfSecret();
+      analyticsInitialized = true;
+      console.info('[DevAnalytics] activated via recheck (press D to toggle panel)');
     }
   };
 
