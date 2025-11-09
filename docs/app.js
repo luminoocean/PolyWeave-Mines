@@ -645,7 +645,10 @@ function init(){
   setupZoomPan();
   if (!gameGrid) startNewGame();
   renderBoard();
-
+// After updating gameSettings and before generating the new board:
+if (window.DevAnalytics) {
+    DevAnalytics.recheckAndInit();
+}
   // modal tab switching
   document.querySelectorAll('#adjModal .tab').forEach(btn=>{
     btn.addEventListener('click', ()=>{ document.querySelectorAll('#adjModal .tab').forEach(t=>t.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('#adjModal .tabpane').forEach(p=>p.classList.remove('active')); document.getElementById(btn.dataset.tab + 'Tab').classList.add('active'); });
