@@ -1,51 +1,34 @@
-// app.js
-// Full updated file: prevents showing win overlay during load by using isLoading flag.
-// Includes autosave, custom adjacency editor, copy/paste import-export,
-// timer, win overlay UX, mobile flag-mode, pan/zoom, chording, delete custom adjacency.
-
 const NUMBER_COLORS = {1:'#3ec7ff',2:'#ff6b6b',3:'#ffd27a',4:'#a88cff',5:'#ff9fb3',6:'#7ce7ff',7:'#d3d3d3',8:'#b0c4de'};
 
 let gameGrid = null;
 let running = false;
 let firstClick = true;
 let currentAdjacency = 'all8';
-let customAdj = {}; // name -> offsets array
+let customAdj = {};
 let isLoading = false;
 const view = { scale: 0.6, tx: 0, ty: 0 };
 
 const STORAGE_KEY = 'polyweave_state_v1';
 const CUSTOM_KEY = 'polyweave_custom_adj_v1';
-
-// Timer vars
 let timerInterval = null;
 let startTime = null;
 let elapsedSeconds = 0;
-
-// utils
 function idx(rows,cols,r,c){ return r*cols + c; }
 function inBounds(rows,cols,r,c){ return r>=0 && r<rows && c>=0 && c<cols; }
 function createGrid(rows,cols){ return { rows, cols, cells: Array(rows*cols).fill(0).map(()=>({ mine:false, revealed:false, flagged:false, count:0 })) }; }
-
-// adjacency registry (built-ins + custom)
 function squareOffsets(r,c,adj){
   if (adj === 'edges4') return [[-1,0],[1,0],[0,-1],[0,1]];
   if (adj === 'all8') return [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
   if (customAdj && customAdj[adj]) return customAdj[adj];
   return [[-1,0],[1,0],[0,-1],[0,1]];
 }
-
-// geometry helpers
 function squareCenter(rows,cols,side){
   const PAD = 12; const centers=[];
   for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){ const x = PAD + c*side + side/2; const y = PAD + r*side + side/2; centers.push({r,c,x,y}); }
   return { centers, w: PAD*2 + cols*side, h: PAD*2 + rows*side };
 }
-
-// svg helpers
 function makeSvg(tag, attrs={}){ const el=document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) el.setAttribute(k, String(attrs[k])); return el; }
 function polyPoints(pts){ return pts.map(p=>`${p[0]},${p[1]}`).join(' '); }
-
-// render
 function renderBoard(){
   const svg = document.getElementById('minefieldSvg');
   const container = document.getElementById('minefieldContainer');
@@ -87,7 +70,6 @@ function renderBoard(){
   container.style.transformOrigin = 'center center';
 }
 
-// game logic
 function computeCounts(grid, adjacency){
   const { rows, cols, cells } = grid;
   for (let r=0;r<rows;r++){
@@ -125,7 +107,6 @@ function placeMines(grid, mineCount, safe){
   computeCounts(grid,currentAdjacency);
 }
 
-// reveal/flag/chord helpers
 function revealCell(grid,r,c){
   const { rows, cols, cells } = grid;
   if (!inBounds(rows,cols,r,c)) return { changed:[], exploded:false };
@@ -150,7 +131,6 @@ function toggleFlag(grid,r,c){ const {rows,cols,cells}=grid; if (!inBounds(rows,
 function checkWin(grid){ return grid.cells.every(cell => (cell.mine && cell.flagged) || (!cell.mine && cell.revealed)); }
 function countFlaggedNeighbors(grid,r,c){ let count=0; for (const [dr,dc] of squareOffsets(r,c,currentAdjacency)){ const rr=r+dr, cc=c+dc; if (!inBounds(grid.rows,grid.cols,rr,cc)) continue; if (grid.cells[idx(grid.rows,grid.cols,rr,cc)].flagged) count++; } return count; }
 
-// Timer functions
 function startTimer(){
   if (timerInterval) return;
   startTime = Date.now() - (elapsedSeconds * 1000);
@@ -175,13 +155,11 @@ function updateTimer(){
   if (el) el.textContent = `${mins}:${secs.toString().padStart(2,'0')}`;
 }
 
-// handlers
 function attachHandlers(el,r,c){
   el.addEventListener('click', (e)=>{
     e.stopPropagation();
     if (!running) return;
 
-    // mobile flag-mode check
     const flagModeActive = document.body.classList.contains('flag-mode');
     if (flagModeActive){
       toggleFlag(gameGrid,r,c);
@@ -189,7 +167,6 @@ function attachHandlers(el,r,c){
       saveAll(); renderBoard(); return;
     }
 
-    // chord behavior (reveal neighbors when flagged count equals number)
     const cellObjNow = gameGrid.cells[idx(gameGrid.rows,gameGrid.cols,r,c)];
     if (cellObjNow.revealed && cellObjNow.count > 0){
       const flagged = countFlaggedNeighbors(gameGrid,r,c);
@@ -211,7 +188,6 @@ function attachHandlers(el,r,c){
       const mines = Math.max(1, Number((document.getElementById('msMines')||{value:40}).value || 40));
       placeMines(gameGrid, mines, [r,c]);
       firstClick = false;
-      // start timer on first real action
       startTimer();
     }
 
@@ -224,7 +200,6 @@ function attachHandlers(el,r,c){
   el.addEventListener('contextmenu', (e)=>{ e.preventDefault(); e.stopPropagation(); if (!running) return; toggleFlag(gameGrid,r,c); if (checkWin(gameGrid)){ onWin(); } saveAll(); renderBoard(); });
 }
 
-// Win/Lose handlers
 function onWin(){
   running = false;
   stopTimer();
@@ -242,7 +217,6 @@ function onLose(){
   document.getElementById('msStatus').textContent = 'BOOM';
 }
 
-// controls & UI wiring
 function startNewGame(){
   resetTimer();
   const rows = Math.max(3, Number((document.getElementById('msRows')||{value:12}).value || 12));
@@ -275,48 +249,38 @@ function wireControls(){
 
   if (adj) adj.addEventListener('change', (e)=>{
     currentAdjacency = e.target.value;
-    // show/hide delete button
     if (deleteAdjBtn) deleteAdjBtn.style.display = (customAdj && customAdj[currentAdjacency]) ? 'inline-block' : 'none';
     if (gameGrid) computeCounts(gameGrid,currentAdjacency);
     persistSettings(); renderBoard(); saveAll();
   });
 
   if (theme) theme.addEventListener('change', (e)=>{ document.body.setAttribute('data-theme', e.target.value || 'dark-ocean'); persistSettings(); saveAll(); renderBoard(); });
-
-  // delete custom adjacency handler
   if (deleteAdjBtn){
     deleteAdjBtn.addEventListener('click', ()=>{
       if (!currentAdjacency || !customAdj[currentAdjacency]) return;
       if (!confirm(`Delete custom adjacency "${currentAdjacency}"? This cannot be undone.`)) return;
       delete customAdj[currentAdjacency];
       populateCustomAdjToDropdown();
-      // switch to default
       const sel = document.getElementById('adjacencySelect');
       if (sel){ sel.value = 'all8'; currentAdjacency = 'all8'; }
       deleteAdjBtn.style.display = 'none';
       saveAll(); renderBoard();
     });
-    // initial visibility
     deleteAdjBtn.style.display = 'none';
   }
 
-  // flag-mode button
   const flagBtn = document.getElementById('flagMode');
   if (flagBtn){
     flagBtn.addEventListener('click', (ev)=>{ ev.preventDefault(); const on = document.body.classList.toggle('flag-mode'); flagBtn.setAttribute('aria-pressed', on); });
   }
 
-  // copy / paste
   const copyBtn = document.getElementById('copyGame');
   if (copyBtn) copyBtn.addEventListener('click', ()=>{ const s = exportStateString(); navigator.clipboard.writeText(s).then(()=>{ flashStatus('Copied'); }).catch(()=>{ flashStatus('Copy failed'); }); });
   const pasteBtn = document.getElementById('pasteGame');
   if (pasteBtn) pasteBtn.addEventListener('click', ()=>{ openPasteModal(); });
-
-  // adjacency editor open
   const openAdj = document.getElementById('openAdjEditor');
   if (openAdj) openAdj.addEventListener('click', ()=>{ openAdjModal(); });
 
-  // modal close handlers
   const closeAdjBtn = document.getElementById('closeAdj');
   if (closeAdjBtn) closeAdjBtn.addEventListener('click', ()=>{ closeAdjModal(); });
   const closePasteBtn = document.getElementById('closePaste');
@@ -328,14 +292,12 @@ function wireControls(){
   const previewStart = document.getElementById('previewStart');
   if (previewStart) previewStart.addEventListener('click', ()=>{ startPreview(); });
 
-  // win overlay buttons
   const winClose = document.getElementById('winClose');
   if (winClose) winClose.addEventListener('click', ()=>{ const overlay = document.getElementById('winOverlay'); if (overlay) overlay.style.display = 'none'; });
   const winNew = document.getElementById('winNew');
   if (winNew) winNew.addEventListener('click', ()=>{ const overlay = document.getElementById('winOverlay'); if (overlay) overlay.style.display = 'none'; startNewGame(); });
 }
 
-// autosave / persistence
 function persistSettings(){
   const settings = {
     rows: Number((document.getElementById('msRows')||{value:12}).value),
@@ -376,11 +338,9 @@ function saveAll(){
 function loadAll(){
   isLoading = true;
   try{
-    // Load custom patterns first so dropdown can include them before we set adjacency
     const savedCustom = JSON.parse(localStorage.getItem(CUSTOM_KEY) || '{}');
     if (savedCustom && typeof savedCustom === 'object'){ customAdj = savedCustom; populateCustomAdjToDropdown(); }
 
-    // Load lightweight settings (keep adjacency set for later)
     const settingsRaw = JSON.parse(localStorage.getItem(STORAGE_KEY + '_settings') || 'null');
     if (settingsRaw){
       document.getElementById('msRows').value = settingsRaw.rows;
@@ -390,19 +350,15 @@ function loadAll(){
       document.body.setAttribute('data-theme', settingsRaw.theme || 'dark-ocean');
     }
 
-    // Load the full saved state
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (raw && raw.customAdj){ customAdj = raw.customAdj; populateCustomAdjToDropdown(); }
 
-    // After custom patterns are in the dropdown, decide adjacency to set (raw.settings > settingsRaw > default)
     const adjToSet = (raw && raw.settings && raw.settings.adjacency) || (settingsRaw && settingsRaw.adjacency) || 'all8';
     const sel = document.getElementById('adjacencySelect');
     if (sel){ sel.value = adjToSet; currentAdjacency = adjToSet; }
-    // ensure delete button visibility matches
     const deleteAdjBtn = document.getElementById('deleteAdj');
     if (deleteAdjBtn) deleteAdjBtn.style.display = (customAdj && customAdj[currentAdjacency]) ? 'inline-block' : 'none';
 
-    // Now apply any more detailed saved settings if present
     if (raw && raw.settings){
       document.getElementById('msRows').value = raw.settings.rows;
       document.getElementById('msCols').value = raw.settings.cols;
@@ -411,7 +367,6 @@ function loadAll(){
       document.body.setAttribute('data-theme', raw.settings.theme || 'dark-ocean');
     }
 
-    // restore game if present
     if (raw && raw.game){
       const s = raw.game;
       const r = (raw.settings && raw.settings.rows) || Number(document.getElementById('msRows').value);
@@ -435,7 +390,6 @@ if (checkWin(gameGrid) && !running){
   isLoading = false;
 }
 
-// copy / paste compact encoding
 function exportStateString(){
   const settings = {
     rows: Number(document.getElementById('msRows').value),
@@ -458,18 +412,15 @@ function importStateString(str){
   const json = JSON.parse(decodeURIComponent(escape(atob(str))));
   if (!json || !json.s) throw new Error('invalid');
 
-  // Populate custom patterns first so dropdown selection will succeed
   if (json.custom){
     customAdj = json.custom;
     populateCustomAdjToDropdown();
   }
 
-  // Apply settings and ensure currentAdjacency is updated (important for chording)
   document.getElementById('msRows').value = json.s.rows;
   document.getElementById('msCols').value = json.s.cols;
   document.getElementById('msMines').value = json.s.mines;
 
-  // set adjacency AFTER custom options exist and sync variable
   const sel = document.getElementById('adjacencySelect');
   if (sel){ sel.value = json.s.adjacency || 'all8'; currentAdjacency = json.s.adjacency || 'all8'; }
   const deleteAdjBtn = document.getElementById('deleteAdj');
@@ -478,7 +429,6 @@ function importStateString(str){
   document.getElementById('themeSelect').value = json.s.theme || 'dark-ocean';
   document.body.setAttribute('data-theme', json.s.theme || 'dark-ocean');
 
-  // Rebuild game if present
   if (json.g){
     const r = json.s.rows, c = json.s.cols;
     gameGrid = createGrid(r,c);
@@ -493,7 +443,6 @@ function importStateString(str){
   saveAll(); renderBoard();
 }
 
-// helper: small status flash
 function flashStatus(txt){
   const el = document.getElementById('msStatus');
   if (!el) return;
@@ -502,7 +451,6 @@ function flashStatus(txt){
   setTimeout(()=> el.textContent = prev, 1200);
 }
 
-// adjacency editor modal
 function openAdjModal(){
   document.getElementById('adjModal').setAttribute('aria-hidden','false');
   document.querySelectorAll('#adjModal .tab').forEach(t=> t.classList.remove('active'));
@@ -536,7 +484,6 @@ function initEditorGrid(){
   if (saveBtn) saveBtn.onclick = saveEditorPattern;
 }
 
-// editor helpers
 function editorToggleCell(e){ const el = e.currentTarget; if (el.dataset.center) return; el.classList.toggle('on'); }
 function clearEditor(){ document.querySelectorAll('#editorGrid .editor-cell.on').forEach(x=> x.classList.remove('on')); }
 function saveEditorPattern(){
@@ -556,7 +503,6 @@ function saveEditorPattern(){
   if (nameInput) nameInput.value = '';
 }
 
-// populate user patterns into adjacency dropdown
 function populateCustomAdjToDropdown(){
   const sel = document.getElementById('adjacencySelect');
   if (!sel) return;
@@ -569,7 +515,6 @@ function populateCustomAdjToDropdown(){
   }
 }
 
-// preview small minesweeper in modal
 let previewGame = null;
 function startPreview(){
   const pr = Number(document.getElementById('previewRows').value || 9);
@@ -601,7 +546,6 @@ function renderPreview(grid, hostId){
   host.appendChild(area);
 }
 
-// zoom/pan
 function setupZoomPan(){
   const frame = document.getElementById('minefieldFrame');
   const container = document.getElementById('minefieldContainer');
@@ -637,7 +581,6 @@ function setupZoomPan(){
   frame.addEventListener('keydown', (e)=>{ if (e.key === '+' || e.key === '='){ view.scale = Math.min(6, view.scale * 1.12); renderBoard(); } if (e.key === '-' || e.key === '_'){ view.scale = Math.max(0.1, view.scale / 1.12); renderBoard(); } if (e.key === '0'){ view.scale = 1; view.tx=0; view.ty=0; renderBoard(); } });
 }
 
-// init
 function init(){
   loadAll();
   wireControls();
@@ -646,12 +589,10 @@ function init(){
   if (!gameGrid) startNewGame();
   renderBoard();
 
-  // modal tab switching
   document.querySelectorAll('#adjModal .tab').forEach(btn=>{
     btn.addEventListener('click', ()=>{ document.querySelectorAll('#adjModal .tab').forEach(t=>t.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('#adjModal .tabpane').forEach(p=>p.classList.remove('active')); document.getElementById(btn.dataset.tab + 'Tab').classList.add('active'); });
   });
 
-  // close modals when clicking backdrop
   const pasteModal = document.getElementById('pasteModal');
   if (pasteModal) pasteModal.addEventListener('click', (e)=>{ if (e.target === e.currentTarget) closePasteModal(); });
   const adjModal = document.getElementById('adjModal');
