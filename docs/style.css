@@ -30,24 +30,20 @@ input[type="number"], select, input[type="text"], textarea{ background: var(--se
 .ms-btn.primary{ background: linear-gradient(var(--accent), #0b98ad); color:#042426; font-weight:600; }
 #msStatus{ padding:8px 12px; font-size:13px; color:var(--sub); }
 
-/* Hide flag button by default; show on touch devices */
 .mobile-only{ display:none; }
 @media (hover: none) and (pointer: coarse){
   .mobile-only{ display:block; }
   .controls{ gap:8px; }
 }
 
-/* frame */
 .minefield-window { position:relative; width:100%; height:calc(100vh - 96px); display:flex; justify-content:center; align-items:flex-start; padding:16px; overflow:hidden; }
 .minefield-shell { width: min(1200px, 96%); max-width:1200px; display:flex; justify-content:center; }
 .minefield-frame { position:relative; width:100%; height: calc(100vh - 140px); border-radius:12px; border: 2px solid rgba(14,165,179,0.18); background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03)); display:flex; align-items:center; justify-content:center; overflow:hidden; }
 
-/* content */
 .minefield-container { transform-origin: center center; transition: transform 100ms ease; display:flex; align-items:center; justify-content:center; width:100%; height:100%; padding:0; touch-action: none; cursor: grab; }
 .minefield-container:active{ cursor:grabbing; }
 #minefieldSvg { display:block; background:transparent; max-width:none; }
 
-/* modal */
 .modal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.45); z-index:200; }
 .modal[aria-hidden="false"]{ display:flex; }
 .modal-sheet{ width:880px; max-width:96%; background:var(--panel); border-radius:10px; padding:12px; box-shadow:0 6px 30px rgba(0,0,0,0.6); color:var(--text); }
@@ -60,21 +56,17 @@ input[type="number"], select, input[type="text"], textarea{ background: var(--se
 .tabpane.active{ display:block; }
 .modal-body{ min-height:220px; }
 
-/* editor grid */
 .editor-grid-wrap{ display:flex; justify-content:center; align-items:center; padding:12px; overflow:auto; }
 .editor-grid{ display:grid; grid-template-columns: repeat(15, 28px); gap:4px; user-select:none; }
 .editor-cell{ width:28px; height:28px; background:rgba(255,255,255,0.02); border-radius:4px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
 .editor-cell.on{ background:var(--accent); color:#042426; font-weight:700; }
 .editor-centre{ outline:2px solid rgba(255,255,255,0.06); }
 
-/* editor controls */
 .editor-controls{ display:flex; justify-content:space-between; align-items:center; padding:10px 6px; gap:8px; }
 .editor-btns{ display:flex; gap:8px; align-items:center; }
 
-/* paste modal */
 textarea#pasteInput{ width:100%; background:var(--select-bg); color:var(--select-text); border-radius:6px; padding:8px; }
 
-/* responsive tweaks */
 @media (max-width:760px){
   .controls{ gap:6px; padding:8px; }
   .minefield-frame{ height: calc(100vh - 180px); }
